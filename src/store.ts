@@ -1,11 +1,12 @@
 import { expenditure } from "./budget.ts";
 import { governance } from "./control.ts";
-import { Database } from "bun:sqlite";
+import { Database, SQLiteError } from "bun:sqlite";
 import {
   mkdirSync,
   readFileSync,
   writeFileSync,
   existsSync,
+  linkSync,
   renameSync,
   rmSync,
 } from "node:fs";
@@ -35,6 +36,27 @@ export type Participation = {
   uploadBytes?: number;
   only?: string[];
 };
+export function stateIdentity(directory: string, persist = true): Identity {
+  const path = join(directory, "identity.json");
+  if (existsSync(path)) return JSON.parse(readFileSync(path, "utf8"));
+  const generated = identity();
+  if (!persist) return generated;
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const temporary = join(directory, ".identity-" + randomUUID());
+  try {
+    writeFileSync(temporary, canonical(generated), { flag: "wx", mode: 0o600 });
+    try {
+      linkSync(temporary, path);
+      return generated;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      // Another initializer won. Its key was completely written before linking.
+      return JSON.parse(readFileSync(path, "utf8"));
+    }
+  } finally {
+    rmSync(temporary, { force: true });
+  }
+}
 function availablePeers(db: Database): string[] {
   return (
     db
@@ -80,21 +102,38 @@ export class Store {
         manifest || existsSync(dbPath),
         "Initialize or join a swarm first",
       );
-    const keyPath = join(directory, "identity.json");
-    if (!existsSync(keyPath))
-      writeFileSync(keyPath, canonical(identity()), {
-        mode: 0o600,
-        flag: "wx",
-      });
-    this.who = JSON.parse(readFileSync(keyPath, "utf8"));
+    this.who = stateIdentity(directory);
     this.db = new Database(dbPath, { create: true });
     try {
+      const busyTimeoutMs = 5000;
+      const busyTimeoutPragma = "PRAGMA busy_timeout = " + busyTimeoutMs;
+      this.db.exec(busyTimeoutPragma);
       const schema = (
         this.db.query("PRAGMA user_version").get() as { user_version: number }
       ).user_version;
       assert(schema <= 4, "Database schema is newer than this binary");
+      // SQLite can decline to call the busy handler when simultaneous journal
+      // upgrades would deadlock. Retry the whole pragma after releasing its locks.
+      const walDeadline = performance.now() + busyTimeoutMs;
+      this.db.exec("PRAGMA busy_timeout = 0");
+      for (;;) {
+        try {
+          this.db.exec("PRAGMA journal_mode = WAL");
+          break;
+        } catch (error) {
+          const remaining = walDeadline - performance.now();
+          if (
+            !(error instanceof SQLiteError) ||
+            !error.code?.startsWith("SQLITE_BUSY") ||
+            remaining <= 0
+          )
+            throw error;
+          Bun.sleepSync(Math.min(20, remaining));
+        }
+      }
+      this.db.exec(busyTimeoutPragma);
       this.db.exec(
-        "PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL; CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS automation (key TEXT PRIMARY KEY,status TEXT,detail TEXT,time INTEGER); CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, body TEXT NOT NULL); CREATE TABLE IF NOT EXISTS blobs (id TEXT PRIMARY KEY, body BLOB NOT NULL); CREATE TABLE IF NOT EXISTS pins (id TEXT PRIMARY KEY); CREATE TABLE IF NOT EXISTS nonces (id TEXT PRIMARY KEY, expires INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS quarantine (peer TEXT, id TEXT, reason TEXT, attempts INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(peer,id)); CREATE TABLE IF NOT EXISTS peers (address TEXT PRIMARY KEY, failures INTEGER NOT NULL DEFAULT 0, nextRetry INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS transfer (key TEXT PRIMARY KEY, bytes INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS blob_owners (id TEXT PRIMARY KEY, author TEXT, bytes INTEGER);",
+        "CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS automation (key TEXT PRIMARY KEY,status TEXT,detail TEXT,time INTEGER); CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, body TEXT NOT NULL); CREATE TABLE IF NOT EXISTS blobs (id TEXT PRIMARY KEY, body BLOB NOT NULL); CREATE TABLE IF NOT EXISTS pins (id TEXT PRIMARY KEY); CREATE TABLE IF NOT EXISTS nonces (id TEXT PRIMARY KEY, expires INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS quarantine (peer TEXT, id TEXT, reason TEXT, attempts INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(peer,id)); CREATE TABLE IF NOT EXISTS peers (address TEXT PRIMARY KEY, failures INTEGER NOT NULL DEFAULT 0, nextRetry INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS transfer (key TEXT PRIMARY KEY, bytes INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS blob_owners (id TEXT PRIMARY KEY, author TEXT, bytes INTEGER);",
       );
       this.db.exec("PRAGMA user_version=4");
       const genesis = this.db.query(

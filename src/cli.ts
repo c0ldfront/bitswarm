@@ -3,7 +3,6 @@ import { parseArgs } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   existsSync,
-  mkdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -18,7 +17,6 @@ import {
   canonical,
   claimExpiration,
   digest,
-  identity,
   makeEvent,
   validateManifest,
   type Manifest,
@@ -29,7 +27,7 @@ import { checkpoint, control, propose } from "./control.ts";
 import { credentials, grant, type Grant, type Auth } from "./access.ts";
 import { verifyResult } from "./verification.ts";
 import type { Isolation } from "./runtime.ts";
-import { Store, type Participation } from "./store.ts";
+import { stateIdentity, Store, type Participation } from "./store.ts";
 import { getManifest, request, requireToken, serve, sync } from "./network.ts";
 import {
   claim,
@@ -296,14 +294,7 @@ async function main() {
     return;
   }
   if (command === "keygen" || command === "init") {
-    mkdirSync(v.state!, { recursive: true, mode: 0o700 });
-    const keyPath = join(v.state!, "identity.json");
-    if (!existsSync(keyPath))
-      writeFileSync(keyPath, canonical(identity()), {
-        mode: 0o600,
-        flag: "wx",
-      });
-    const who = JSON.parse(readFileSync(keyPath, "utf8"));
+    const who = stateIdentity(v.state!);
     if (command === "keygen") {
       out({ publicKey: who.publicKey });
       return;
@@ -430,17 +421,7 @@ async function main() {
       peers.size > 0 || v.bootstrap!.length || v.lan,
       "No bootstrap hints; add --peer URL, --bootstrap MULTIADDR, or --lan",
     );
-    if (command === "join")
-      mkdirSync(v.state!, { recursive: true, mode: 0o700 });
-    const joinKey = join(v.state!, "identity.json");
-    if (command === "join" && !existsSync(joinKey))
-      writeFileSync(joinKey, canonical(identity()), {
-        mode: 0o600,
-        flag: "wx",
-      });
-    const joiningIdentity = existsSync(joinKey)
-      ? JSON.parse(readFileSync(joinKey, "utf8"))
-      : identity();
+    const joiningIdentity = stateIdentity(v.state!, command === "join");
     let auth: Auth =
       v.public || (!token && !invitation && !v.signed)
         ? {

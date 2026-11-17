@@ -145,10 +145,37 @@ test("a committed import recovers its pinned manifest after an interrupted publi
   }
 });
 
+test("concurrent keygen commands return the same complete identity", async () => {
+  const f = setup();
+  try {
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () => {
+        const child = Bun.spawn(
+          [process.execPath, "src/cli.ts", "keygen", "--state", f.state],
+          { stdout: "pipe", stderr: "pipe" },
+        );
+        return Promise.all([
+          child.exited,
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+        ]);
+      }),
+    );
+    const stored = JSON.parse(
+      readFileSync(join(f.state, "identity.json"), "utf8"),
+    );
+    for (const [code, stdout, stderr] of results) {
+      expect(code, stderr).toBe(0);
+      expect(JSON.parse(stdout).publicKey).toBe(stored.publicKey);
+    }
+  } finally {
+    f.cleanup();
+  }
+});
+
 test("concurrent initializations pin exactly one swarm and keep only its inputs", async () => {
   const f = setup();
   try {
-    expect(f.run("keygen").exitCode).toBe(0);
     writeFileSync(f.large, "Second candidate");
     const inputs = [f.small, f.large];
     const results = await Promise.all(

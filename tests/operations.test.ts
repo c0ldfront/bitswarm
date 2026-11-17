@@ -1,4 +1,5 @@
 import { test, expect } from "bun:test";
+import { Database } from "bun:sqlite";
 import {
   mkdtempSync,
   mkdirSync,
@@ -172,6 +173,43 @@ test("future schema versions are rejected instead of being downgraded", () => {
   try {
     expect(() => new Store(path)).toThrow("newer");
   } finally {
+    rmSync(path, { recursive: true, force: true });
+  }
+});
+
+test("opening a store waits for an existing exclusive lock before checking its schema", async () => {
+  const path = mkdtempSync(join(tmpdir(), "bitswarm-opening-"));
+  const writer = new Database(join(path, "swarm.sqlite"), { create: true });
+  writer.exec("CREATE TABLE fixture (n INTEGER); BEGIN EXCLUSIVE");
+  const manifest = JSON.parse(
+    readFileSync("examples/reverse-engineering.json", "utf8"),
+  );
+  manifest.validators = [identity().publicKey];
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      "-e",
+      `
+    import {Store} from "${new URL("../src/store.ts", import.meta.url).href}";
+    console.log("opening");
+    new Store(process.argv[1], JSON.parse(process.argv[2])).close();
+  `,
+      path,
+      JSON.stringify(manifest),
+    ],
+    { stdout: "pipe", stderr: "pipe" },
+  );
+  try {
+    const marker = await child.stdout.getReader().read();
+    expect(new TextDecoder().decode(marker.value).trim()).toBe("opening");
+    await Bun.sleep(100);
+    writer.exec("COMMIT");
+    expect(await new Response(child.stderr).text()).toBe("");
+    expect(await child.exited).toBe(0);
+  } finally {
+    writer.close();
+    child.kill();
+    await child.exited;
     rmSync(path, { recursive: true, force: true });
   }
 });
