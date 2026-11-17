@@ -1,0 +1,31 @@
+{
+  "sampleCountPerMode": 1,
+  "target": "GNU basename path-processing contract",
+  "swarm": {
+    "elapsedMs": 212285,
+    "passed": true,
+    "holdoutChecks": 140,
+    "budgetChargedTokens": 509184,
+    "completedResultTokens": 209184,
+    "attempts": [
+      {
+        "id": "discover",
+        "status": "accepted",
+        "attempts": 2
+      },
+      {
+        "id": "implementation",
+        "status": "accepted",
+        "attempts": 1
+      }
+    ]
+  },
+  "singleAgent": {
+    "elapsedMs": 73078,
+    "passed": true,
+    "holdoutChecks": 140,
+    "budgetChargedTokens": 89159,
+    "completedResultTokens": 89159
+  },
+  "observation": "The single-agent baseline was faster and used fewer recorded tokens on this small sequential utility. No general swarm speedup is established. Monetary costs were not priced."
+}

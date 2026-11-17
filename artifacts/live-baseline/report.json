@@ -1,0 +1,30 @@
+{
+  "baseline": true,
+  "format": "bitswarm.live-evaluation.v1",
+  "model": "Codex authenticated CLI default",
+  "endpoint": "Codex native authenticated transport",
+  "target": "/usr/bin/basename",
+  "targetHash": "1b4a8d23a122a6f1a5a95a8bb5a23bad4517d0f855c9a96af46befa02c9c2f5d",
+  "elapsedMs": 73078,
+  "sourceDir": "/home/coldfront/Warehouse/apps/bitswarm/artifacts/live-baseline/b9d73a59acc4",
+  "billing": "Unpriced Codex account usage; failures are conservatively charged their reserved task budget, not reported as actual billed tokens.",
+  "passed": true,
+  "holdoutChecks": 140,
+  "accounts": [
+    {
+      "role": "single-agent",
+      "usage": {
+        "tokens": 89159,
+        "costMicros": 0
+      }
+    }
+  ],
+  "states": [
+    {
+      "id": "implementation",
+      "status": "accepted",
+      "attempts": 1
+    }
+  ],
+  "scope": "Unbounded path-processing clone. stderr wording, --help, --version and external file inputs are outside the specified contract."
+}

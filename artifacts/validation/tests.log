@@ -1,0 +1,75 @@
+$ BITSWARM_TEST_ISOLATION=1 BITSWARM_TEST_LAN=1 bun test
+bun test v1.4.2 (744846f84)
+
+tests/core.test.ts:
+(pass) signed protocol and deterministic work state > canonical objects ignore key insertion order [0.43ms]
+(pass) signed protocol and deterministic work state > rejects tampering and wrong swarm [1.76ms]
+(pass) signed protocol and deterministic work state > rejects cycles, unknown dependencies, duplicate validators and minority quorums [0.77ms]
+(pass) signed protocol and deterministic work state > a crashed worker releases its claim [1.09ms]
+(pass) signed protocol and deterministic work state > out-of-order delivery converges and requires artifacts plus independent quorum [2.17ms]
+(pass) signed protocol and deterministic work state > self-review cannot meet quorum and unauthorized reviewers are rejected [0.93ms]
+(pass) signed protocol and deterministic work state > conflicting approvals dispute a block and block descendants [1.12ms]
+(pass) signed protocol and deterministic work state > equivocation and repeated votes never multiply a validator [0.87ms]
+(pass) signed protocol and deterministic work state > foreign, expired and dependency-free results cannot unlock work [0.90ms]
+(pass) signed protocol and deterministic work state > future-dated events and excessive lease lengths are rejected [0.58ms]
+
+tests/network.test.ts:
+(pass) three live peers converge across seed loss, restart, bad input and artifact transfer [30.18ms]
+(pass) worker subprocess consumes evidence and publishes a result; downstream retains original sources [33.09ms]
+
+tests/link.test.ts:
+(pass) swarm:// round trips hash, Unicode name and multiple bootstrap origins [0.50ms]
+(pass) seedless links work with separately supplied bootstrap hints [0.08ms]
+(pass) canonicalize and deduplicate bootstrap origins [0.07ms]
+(pass) reject malformed identities, ambiguous versions, credentials and unsafe peer schemes [0.20ms]
+(pass) enforce bounded URI and bootstrap counts [0.12ms]
+
+tests/cli.test.ts:
+(pass) CLI creates and shares a swarm, joins with fallback, works, reviews and exports [866.02ms]
+
+tests/artifacts.test.ts:
+(pass) file chunks preserve ordering, content identities and full-file integrity [6.09ms]
+(pass) streaming import resumes chunks and restore rejects corrupt content [60.26ms]
+
+tests/mesh.test.ts:
+(pass) Noise-encrypted libp2p peers exchange real artifacts and round-trip swarm links [224.50ms]
+(pass) a peer behind a circuit relay serves objects over the relayed route [257.76ms]
+(pass) a seedless join discovers a manifest provider through a project DHT router [2086.10ms]
+(pass) a seedless participant discovers its project through local multicast [2036.22ms]
+
+tests/lifecycle.test.ts:
+(pass) only planner can admit valid proposals, cancel, resume and transfer authority [8.18ms]
+(pass) planner forks halt progress and reviewer reconciliation restores a chosen branch [3.42ms]
+(pass) schema validation, usage limits and machine verification gate acceptance [38.91ms]
+(pass) review timeout frees work; checkpoints freeze approved evidence against later equivocation [5.06ms]
+(pass) local concurrent work reserves budgets atomically and resumes after policy changes [5.81ms]
+(pass) renewals chain causally and cannot extend beyond task duration [1.91ms]
+(pass) reviewer quorum can recover a lost planner key without that key [2.91ms]
+(pass) contributor allocations cannot exceed or silently reclaim the project budget [3.74ms]
+(pass) resuming an exhausted block counts new attempts by authority epoch, including equal timestamps [4.56ms]
+(pass) finite project budgets do not duplicate unallocated allowances across contributors [3.54ms]
+
+tests/access.test.ts:
+(pass) signed invitations admit only their owner; replay, reader writes and revocation fail [18.96ms]
+(pass) selective transfer fetches only selected tasks and invalid objects cannot starve valid ones [14.74ms]
+
+tests/agent.test.ts:
+(pass) real HTTP adapter runs a tool loop, records usage and returns provider findings [4.54ms]
+(pass) agent tools cannot read outside their workspace and budget overflow stops the loop [3.13ms]
+
+tests/runtime.test.ts:
+(pass) execution enforces timeout/output limits and does not forward swarm credentials [100.19ms]
+(pass) materialization rejects escapes and installs an escaped desktop handler into an explicit directory [1.60ms]
+
+tests/isolation.test.ts:
+(pass) bubblewrap isolates network/home and mounts the selected workspace [22.36ms]
+(pass) Docker runs with no external network and cleans its container after completion [461.66ms]
+
+tests/journeys.test.ts:
+(pass) project owner and invited contributor complete the CLI lifecycle and reopen persisted state [2422.22ms]
+(pass) a copied libp2p swarm link joins through the real CLI without an HTTP server [472.00ms]
+
+ 44 pass
+ 0 fail
+ 153 expect() calls
+Ran 44 tests across 12 files. [9.42s]

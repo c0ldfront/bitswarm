@@ -1,0 +1,10 @@
+$ bun examples/demo.ts
+Swarm 06e44ed93fb049dd858d45238d8870b06152295cd7abd04c890af0d3e8a2796c
+Three live peers; two independent reviewers; six dependent blocks.
+Accepted inventory: 511ec1d1deb2 (2/2 reviews)
+Accepted interfaces: e4447b45077a (2/2 reviews)
+Accepted storage: 4fa595831549 (2/2 reviews)
+Accepted behavior: 548071dd1337 (2/2 reviews)
+Accepted specification: fa9c954e74fd (2/2 reviews)
+Accepted parity: 176bac6b1e69 (2/2 reviews)
+Converged: 24 signed events, 8 objects. All blocks accepted.

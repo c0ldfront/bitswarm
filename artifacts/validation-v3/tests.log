@@ -1,0 +1,116 @@
+$ BITSWARM_TEST_ISOLATION=1 BITSWARM_TEST_LAN=1 bun test
+bun test v1.4.2 (744846f84)
+
+tests/core.test.ts:
+(pass) signed protocol and deterministic work state > canonical objects ignore key insertion order [0.52ms]
+(pass) signed protocol and deterministic work state > rejects tampering and wrong swarm [2.14ms]
+(pass) signed protocol and deterministic work state > rejects cycles, unknown dependencies, duplicate validators and minority quorums [0.77ms]
+(pass) signed protocol and deterministic work state > a crashed worker releases its claim [1.13ms]
+(pass) signed protocol and deterministic work state > out-of-order delivery converges and requires artifacts plus independent quorum [2.18ms]
+(pass) signed protocol and deterministic work state > self-review cannot meet quorum and unauthorized reviewers are rejected [0.95ms]
+(pass) signed protocol and deterministic work state > conflicting approvals dispute a block and block descendants [1.08ms]
+(pass) signed protocol and deterministic work state > equivocation and repeated votes never multiply a validator [0.87ms]
+(pass) signed protocol and deterministic work state > foreign, expired and dependency-free results cannot unlock work [0.86ms]
+(pass) signed protocol and deterministic work state > future-dated events and excessive lease lengths are rejected [0.56ms]
+
+tests/network.test.ts:
+(pass) three live peers converge across seed loss, restart, bad input and artifact transfer [30.38ms]
+(pass) worker subprocess consumes evidence and publishes a result; downstream retains original sources [72.91ms]
+
+tests/link.test.ts:
+(pass) swarm:// round trips hash, Unicode name and multiple bootstrap origins [0.43ms]
+(pass) seedless links work with separately supplied bootstrap hints [0.08ms]
+(pass) canonicalize and deduplicate bootstrap origins [0.08ms]
+(pass) reject malformed identities, ambiguous versions, credentials and unsafe peer schemes [0.23ms]
+(pass) enforce bounded URI and bootstrap counts [0.11ms]
+
+tests/cli.test.ts:
+(pass) CLI creates and shares a swarm, joins with fallback, works, reviews and exports [910.56ms]
+
+tests/artifacts.test.ts:
+(pass) file chunks preserve ordering, content identities and full-file integrity [5.55ms]
+(pass) streaming import resumes chunks and restore rejects corrupt content [53.31ms]
+
+tests/mesh.test.ts:
+(pass) Noise-encrypted libp2p peers exchange real artifacts and round-trip swarm links [237.73ms]
+(pass) a peer behind a circuit relay serves objects over the relayed route [255.05ms]
+(pass) a seedless join discovers a manifest provider through a project DHT router [2066.46ms]
+(pass) a seedless participant discovers its project through local multicast [2029.66ms]
+
+tests/lifecycle.test.ts:
+(pass) only planner can admit valid proposals, cancel, resume and transfer authority [7.07ms]
+(pass) planner forks halt progress and reviewer reconciliation restores a chosen branch [3.37ms]
+(pass) schema validation, usage limits and machine verification gate acceptance [37.73ms]
+(pass) review timeout frees work; checkpoints freeze approved evidence against later equivocation [4.76ms]
+(pass) local concurrent work reserves budgets atomically and resumes after policy changes [4.45ms]
+(pass) renewals chain causally and cannot extend beyond task duration [1.99ms]
+(pass) reviewer quorum can recover a lost planner key without that key [3.00ms]
+(pass) contributor allocations cannot exceed or silently reclaim the project budget [4.05ms]
+(pass) resuming an exhausted block counts new attempts by authority epoch, including equal timestamps [4.28ms]
+(pass) finite project budgets do not duplicate unallocated allowances across contributors [3.24ms]
+
+tests/access.test.ts:
+(pass) signed invitations admit only their owner; replay, reader writes and revocation fail [19.44ms]
+(pass) selective transfer fetches only selected tasks and invalid objects cannot starve valid ones [13.58ms]
+
+tests/agent.test.ts:
+(pass) real HTTP adapter runs a tool loop, records usage and returns provider findings [3.85ms]
+(pass) agent tools cannot read outside their workspace and budget overflow stops the loop [2.55ms]
+
+tests/runtime.test.ts:
+(pass) execution enforces timeout/output limits and does not forward swarm credentials [102.16ms]
+(pass) materialization rejects escapes and installs an escaped desktop handler into an explicit directory [1.26ms]
+
+tests/isolation.test.ts:
+(pass) bubblewrap isolates network/home and mounts the selected workspace [22.79ms]
+(pass) Docker runs with no external network and cleans its container after completion [439.70ms]
+
+tests/journeys.test.ts:
+(pass) project owner and invited contributor complete the CLI lifecycle and reopen persisted state [2401.44ms]
+(pass) a copied libp2p swarm link joins through the real CLI without an HTTP server [463.03ms]
+
+tests/repairs.test.ts:
+(pass) legacy planner expenditure and in-flight reservations cannot be allocated again [5.39ms]
+(pass) cancellation terminates a running adapter and prevents late publication [105.81ms]
+(pass) invalid follow-up batches fail before a result is published [30.47ms]
+(pass) Docker resolves Bun inside its image instead of using the host path [487.32ms]
+(pass) whole Bun adapter isolation mounts only job files and supports bundled code [53.66ms]
+(pass) cancellation also reaps detached descendants of a trusted local adapter [162.63ms]
+(pass) a complete bundled Bun worker runs through the Docker adapter path [467.33ms]
+
+tests/operations.test.ts:
+(pass) encrypted backup restores keys, state, source objects and rejects tampering atomically [126.72ms]
+(pass) compaction archives failed attempts without resetting costs, authority or acceptance [84.23ms]
+(pass) future schema versions are rejected instead of being downgraded [2.05ms]
+
+tests/credits.test.ts:
+(pass) contribution credits require checkpointed work, confirm on a work chain and cannot double spend [24.00ms]
+(pass) a higher-work fork deterministically replaces a shorter credit history [30.18ms]
+
+tests/public.test.ts:
+(pass) public contributors join with signed work proofs while cheap anonymous requests fail [10.92ms]
+(pass) public admission bounds caller work parameters and returns a retryable quota response [6.34ms]
+(pass) a signed public request cannot be replayed against a different swarm [7.57ms]
+
+tests/autopilot.test.ts:
+(pass) autonomous actors plan, admit, execute, independently verify and checkpoint without operator calls [601.96ms]
+
+tests/faults.test.ts:
+(pass) partitioned duplicate work converges to a dispute and blocks descendants on both replicas [16.61ms]
+(pass) seeded envelope corruption never changes a valid signature into accepted work [37.20ms]
+(pass) a process killed after committing recovers its SQLite WAL without graceful close [61.05ms]
+
+tests/verification.test.ts:
+(pass) protocol 3 requires independent verifier quorum and the exact pinned recipe [7.89ms]
+(pass) recipe hashes include imported helper code rather than only the entrypoint [21.30ms]
+
+tests/cli-v3.test.ts:
+(pass) public swarm links join without shared credentials and encrypted CLI backups restore [708.27ms]
+
+tests/codex.test.ts:
+(pass) native Codex adapter sends task-specific packets and enforces reported usage [57.93ms]
+
+ 67 pass
+ 0 fail
+ 228 expect() calls
+Ran 67 tests across 21 files. [12.58s]

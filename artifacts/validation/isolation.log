@@ -1,0 +1,11 @@
+$ BITSWARM_TEST_ISOLATION=1 bun test tests/isolation.test.ts
+bun test v1.4.2 (744846f84)
+
+tests/isolation.test.ts:
+(pass) bubblewrap isolates network/home and mounts the selected workspace [29.50ms]
+(pass) Docker runs with no external network and cleans its container after completion [449.48ms]
+
+ 2 pass
+ 0 fail
+ 2 expect() calls
+Ran 2 tests across 1 file. [526.00ms]

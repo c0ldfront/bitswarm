@@ -1,0 +1,45 @@
+{
+  "mode": "single-worker baseline",
+  "elapsedMs": 2749,
+  "swarm": "0be12f4a4491fb05d321870cd4b4a1b5470519d748f36da6167b0e36b67fb34b",
+  "acceptedBlocks": 4,
+  "validInputParityCases": 192,
+  "boundaryParityCases": 13,
+  "totalVerifierChecks": 397,
+  "usage": [
+    {
+      "tokens": 0,
+      "costMicros": 0
+    }
+  ],
+  "metrics": {
+    "events": 20,
+    "objects": 10,
+    "states": {
+      "ready": 0,
+      "claimed": 0,
+      "review": 0,
+      "accepted": 4,
+      "disputed": 0,
+      "blocked": 0,
+      "cancelled": 0,
+      "exhausted": 0
+    },
+    "usage": {
+      "tokens": 0,
+      "costMicros": 0
+    },
+    "transfers": [
+      {
+        "key": "received",
+        "bytes": 8244
+      }
+    ],
+    "quarantine": [],
+    "peers": []
+  },
+  "artifact": "7dee6ce13c59840abd1fa5efff550b2dfae59bfc4b6db32fbb98df7f210aab2a",
+  "generatedPath": "/home/coldfront/Warehouse/apps/bitswarm/artifacts/benchmark/single-7dee6ce13c59",
+  "method": "Deterministic black-box enumeration; no LLM inference or model spending",
+  "conclusions": "Finite-domain reconstruction only. Results do not establish performance on arbitrary applications or LLM quality."
+}

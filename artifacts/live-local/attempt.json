@@ -1,0 +1,122 @@
+{
+  "events": [
+    {
+      "author": "MCowBQYDK2VwAyEA/gscL1+jbqHPOPIFTObQRM/hqDZNQp6mqeodjOQ3Pvg=",
+      "id": "ba7831da3016927e3735bc434a5358005f0a9d289a32e697df9892f5600b6193",
+      "nonce": "13eba786-284a-4c39-841b-dcca74d1408c",
+      "payload": {
+        "action": {
+          "budget": {
+            "maxConcurrent": 1,
+            "maxCostMicros": 0,
+            "maxTokens": 150000
+          },
+          "enabled": true,
+          "key": "MCowBQYDK2VwAyEAZ9Jb8XQi+Fpilci67KMs3sizUfZAAX3doGUXbsFaIfs=",
+          "role": "worker",
+          "type": "member"
+        },
+        "kind": "control",
+        "parent": "43115ae75e09e14504a7a71d6778c50da9dedbf6cf4e7c085793b490da4fe35e"
+      },
+      "signature": "gJg2hQlBV8gpKehKN8TNxYQvzhEoWZ/ZRTfRGyIy9i0S+eNHNRSV/oo4U85721SBWvqQpuKYm4ugWKugsAmVAA==",
+      "swarm": "43115ae75e09e14504a7a71d6778c50da9dedbf6cf4e7c085793b490da4fe35e",
+      "time": 1794936089678,
+      "version": 2
+    },
+    {
+      "author": "MCowBQYDK2VwAyEA/gscL1+jbqHPOPIFTObQRM/hqDZNQp6mqeodjOQ3Pvg=",
+      "id": "92759d0b7257ad6565c09975797878655e95ec93c213f6bfa511e110128ee447",
+      "nonce": "bd42c67a-5058-4d15-af73-f1a9a9536cc9",
+      "payload": {
+        "action": {
+          "budget": {
+            "maxConcurrent": 1,
+            "maxCostMicros": 0,
+            "maxTokens": 150000
+          },
+          "enabled": true,
+          "key": "MCowBQYDK2VwAyEAQX1vsdim44CtM2JWUtaw+2dU7Rw5e4tAwM1BCmeWg18=",
+          "role": "worker",
+          "type": "member"
+        },
+        "kind": "control",
+        "parent": "ba7831da3016927e3735bc434a5358005f0a9d289a32e697df9892f5600b6193"
+      },
+      "signature": "ZuUDktLRLL++R8ZBm7W0RQHXhCZF86JQmgAxI+JoLg7YuB42PSWiskw4rWbdLGmBdki5Qg8WidPwCz90tutADw==",
+      "swarm": "43115ae75e09e14504a7a71d6778c50da9dedbf6cf4e7c085793b490da4fe35e",
+      "time": 1794936089680,
+      "version": 2
+    },
+    {
+      "author": "MCowBQYDK2VwAyEAZ9Jb8XQi+Fpilci67KMs3sizUfZAAX3doGUXbsFaIfs=",
+      "id": "943d0e612b61ff358085d8990cd397f4daa919bf892449ac21bf890d40685b24",
+      "nonce": "31b2ef05-dfee-46eb-82bc-e2288174b186",
+      "payload": {
+        "block": "discover",
+        "dependencies": [],
+        "epoch": "92759d0b7257ad6565c09975797878655e95ec93c213f6bfa511e110128ee447",
+        "expires": 1794936269705,
+        "kind": "claim"
+      },
+      "signature": "MsuAHugClKQm1PQ9rv7C75FmJaxPS96WSY527tCX3s86GxAnIbVM4y/m9Lort7VqPF/DWf+NJ11pXRJaTTcNBA==",
+      "swarm": "43115ae75e09e14504a7a71d6778c50da9dedbf6cf4e7c085793b490da4fe35e",
+      "time": 1794936089705,
+      "version": 2
+    },
+    {
+      "author": "MCowBQYDK2VwAyEAZ9Jb8XQi+Fpilci67KMs3sizUfZAAX3doGUXbsFaIfs=",
+      "id": "6d1f3617dc31be914759a4c50d08382cfc31109210bcc2d5f44722659aa50216",
+      "nonce": "4bfc05af-01ad-4bae-9cad-3c54dfda3414",
+      "payload": {
+        "claim": "943d0e612b61ff358085d8990cd397f4daa919bf892449ac21bf890d40685b24",
+        "kind": "failure",
+        "reason": "Executable exited with status 1",
+        "retryable": true,
+        "usage": {
+          "costMicros": 0,
+          "tokens": 50000
+        }
+      },
+      "signature": "mVg3QE4XVd/GFczHh0M//GKCXw6zdoXBcOFmZTWh3ZtHYdMG1uqN6BVO91vKYct3Wa/08DdnOVJlCsUXva8pCg==",
+      "swarm": "43115ae75e09e14504a7a71d6778c50da9dedbf6cf4e7c085793b490da4fe35e",
+      "time": 1794936093568,
+      "version": 2
+    },
+    {
+      "author": "MCowBQYDK2VwAyEAZ9Jb8XQi+Fpilci67KMs3sizUfZAAX3doGUXbsFaIfs=",
+      "id": "f3ceecc91762553cd308c8e855393123520ea4449ba1a19c374a0b974da3b067",
+      "nonce": "bf561b0e-425d-43ef-81c9-2c37f74111bc",
+      "payload": {
+        "block": "discover",
+        "dependencies": [],
+        "epoch": "92759d0b7257ad6565c09975797878655e95ec93c213f6bfa511e110128ee447",
+        "expires": 1794936273711,
+        "kind": "claim"
+      },
+      "signature": "UGKwfHV9TEY0glZq2mRlKPblFASawRPB/BccPAvE9cL5jW2ygsHPErdVP84VwaQGt8/8CE5lG1REUJzvqbcaBw==",
+      "swarm": "43115ae75e09e14504a7a71d6778c50da9dedbf6cf4e7c085793b490da4fe35e",
+      "time": 1794936093711,
+      "version": 2
+    },
+    {
+      "author": "MCowBQYDK2VwAyEAZ9Jb8XQi+Fpilci67KMs3sizUfZAAX3doGUXbsFaIfs=",
+      "id": "2d6514f317f5934e3680edf6b1d6bccc31c1c38ff1bc381266d08c0fbd96e930",
+      "nonce": "63c8bc43-0131-4afe-bd90-66fedb9f2d49",
+      "payload": {
+        "claim": "f3ceecc91762553cd308c8e855393123520ea4449ba1a19c374a0b974da3b067",
+        "kind": "failure",
+        "reason": "Executable exited with status 1",
+        "retryable": true,
+        "usage": {
+          "costMicros": 0,
+          "tokens": 50000
+        }
+      },
+      "signature": "fMKyLH762Sh+n9tAQioayROGGqQ3y+Va+6Tohr4BHSH8+TYT1pE/c6R+2+5WYSuKVBYWirzP1W7BK/iM9pk0AQ==",
+      "swarm": "43115ae75e09e14504a7a71d6778c50da9dedbf6cf4e7c085793b490da4fe35e",
+      "time": 1794936094426,
+      "version": 2
+    }
+  ]
+}

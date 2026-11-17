@@ -1,0 +1,131 @@
+{
+  "format": "bitswarm.compatibility.v1",
+  "driver": "native Codex",
+  "scope": "Single-host synthetic image codec. Same observations and parameterized decoder in each paired trial. Fixed one-attempt policy. Timings include artifact fetch, model execution, verification and assembly.",
+  "rows": [
+    {
+      "trial": 1,
+      "mode": "single",
+      "projectTokenBudget": 90000,
+      "elapsedMs": 9994,
+      "firstVerifiedMs": 9992,
+      "workerPayloadBytes": [
+        739
+      ],
+      "reportedTokens": 21125,
+      "unreportedFailedAttempts": 0,
+      "totalTokensIncludingRetries": 21125,
+      "receipts": [
+        {
+          "block": "image",
+          "tokens": 21125,
+          "checks": 32,
+          "elapsedMs": 9992
+        }
+      ],
+      "integratedPassed": 32,
+      "integratedCases": 32,
+      "errors": []
+    },
+    {
+      "trial": 1,
+      "mode": "swarm",
+      "projectTokenBudget": 90000,
+      "elapsedMs": 10003,
+      "firstVerifiedMs": 8479,
+      "workerPayloadBytes": [
+        228,
+        249,
+        262
+      ],
+      "reportedTokens": 61421,
+      "unreportedFailedAttempts": 0,
+      "totalTokensIncludingRetries": 61421,
+      "receipts": [
+        {
+          "block": "header",
+          "tokens": 20468,
+          "checks": 32,
+          "elapsedMs": 8479
+        },
+        {
+          "block": "runs",
+          "tokens": 20459,
+          "checks": 32,
+          "elapsedMs": 9151
+        },
+        {
+          "block": "palette",
+          "tokens": 20494,
+          "checks": 32,
+          "elapsedMs": 10002
+        }
+      ],
+      "integratedPassed": 32,
+      "integratedCases": 32,
+      "errors": []
+    },
+    {
+      "trial": 2,
+      "mode": "swarm",
+      "projectTokenBudget": 90000,
+      "elapsedMs": 9865,
+      "firstVerifiedMs": 8580,
+      "workerPayloadBytes": [
+        228,
+        248,
+        262
+      ],
+      "reportedTokens": 61483,
+      "unreportedFailedAttempts": 0,
+      "totalTokensIncludingRetries": 61483,
+      "receipts": [
+        {
+          "block": "header",
+          "tokens": 20480,
+          "checks": 32,
+          "elapsedMs": 8580
+        },
+        {
+          "block": "runs",
+          "tokens": 20477,
+          "checks": 32,
+          "elapsedMs": 9641
+        },
+        {
+          "block": "palette",
+          "tokens": 20526,
+          "checks": 32,
+          "elapsedMs": 9864
+        }
+      ],
+      "integratedPassed": 32,
+      "integratedCases": 32,
+      "errors": []
+    },
+    {
+      "trial": 2,
+      "mode": "single",
+      "projectTokenBudget": 90000,
+      "elapsedMs": 12094,
+      "firstVerifiedMs": 12093,
+      "workerPayloadBytes": [
+        738
+      ],
+      "reportedTokens": 21133,
+      "unreportedFailedAttempts": 0,
+      "totalTokensIncludingRetries": 21133,
+      "receipts": [
+        {
+          "block": "image",
+          "tokens": 21133,
+          "checks": 32,
+          "elapsedMs": 12093
+        }
+      ],
+      "integratedPassed": 32,
+      "integratedCases": 32,
+      "errors": []
+    }
+  ]
+}

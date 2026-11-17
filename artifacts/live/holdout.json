@@ -1,0 +1,572 @@
+{
+  "checks": {
+    "checks": [
+      {
+        "name": "[\"/usr/local/bin/tool\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"/\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"//\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"///\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"foo.txt\",\".txt\"]",
+        "passed": true
+      },
+      {
+        "name": "[\".txt\",\".txt\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"aa\",\"aa\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"abc\",\"x\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"a///\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"-a\",\"/a/b\",\"/x/y\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"-s\",\".txt\",\"a.txt\",\"b.txt\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"-z\",\"hello\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-hello\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"-a\"]",
+        "passed": true
+      },
+      {
+        "name": "[]",
+        "passed": true
+      },
+      {
+        "name": "[\"one\",\"two\",\"three\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--suffix=.txt\",\"a.txt\",\"/x/b.txt\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"-as.txt\",\"a.txt\",\"b.txt\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"-az\",\"/a/b\",\"/x/y\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"é/ _9東京 a _ 東京-東京-.éa9ab東京9東京9.é.é_ _9東京-東京 _-_-/\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-.é/b.babab東京9_9a-/-. .9_9.-a .b. aéa-ab.9/-a-東京 /\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"9a _-東京b.-ab_ /9aé/é.\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"b東京9_é_é.b_9/9/ 東京é_9.-東京-aé東京9/-_\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"9_ _\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"b/é. /é_é東京 /9.é_éa .9東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" _é. _-/b_9.b_9.-a9_9東京-/ /-.9東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"b/-/b. 東京-/éab東京é_9ab_b東京9.b/-東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"é.9a aéa a _9/é_\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-a9.ba _-.9_b.é東京9東京é. _\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"é.b_ /\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"b/-_ /-_9.-_\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" _-_9東京-/é東京-/\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" /9aé/9.9a9.b.9_ /b. /-a-_é/é_-_ /-東京-.b. _\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" /-東京é/é東京 /b. aba a\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-. .é_-.\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-/9東京 .b.-/b東京 .b/baé/ .é/é東京-a-.9a /\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-/-/ . .\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"9aba\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"é東京é. 東京-東京 東京éab.9/9東京 _é.-/\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" 東京b東京 a-_ ab/é_9.-a9東京é東京 ab.é.-aéa /\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" a .-.éa 東京-.\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" 東京b_9ab/ ab_éa-.b/b_ a9東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-東京9_b東京 .\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-a9a-.9/ /é.-a /-_é_é.é/9東京é東京éa-ab_ aé_9東京ba9aé.\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"é.éa . ab/ _ .9東京baé.9a aba-a .9/ 東京éa\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"é_ 東京-東京9aé_9_é.é_b/9a9.b東京é/-_é_9東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"9_9_9.9.b_éa9/9a-東京 /9a-a\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"é/é東京9aé/ 東京 _9a 東京-東京 東京9東京-aé_\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"é_b.b/é_9a 東京é.-.é.-/é_9/ ab_b_\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"b. _ ab東京-.-_9aéaé. /ba _b_\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" .9東京 a9/-.-東京-東京é_9aé_ba _-東京9東京-_-_9.-_\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-東京 .b/-a9ab.é_b_ _9a\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"9a\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"é東京-東京b/\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-.é/é/éa /é_ a\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-/é東京-.9東京é東京éa-/9/ . .\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"baé東京é/ /é東京-.-.9東京9/-/b/9/\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"é_b_9_\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" .é_9_b/é東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" /-_b東京-_é. .b東京é_9東京9東京 _ _baé_9_-_9a-_9東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"é/-_é_-a aéaé東京9東京 _b東京9.-a 東京éa .9a-/ 東京-a9東京é_9a\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-/b東京b.éa a9_b東京é東京 _\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" 東京 /-_b/-a aé_ /9_-/ 東京b東京 _\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"ba _-_9_-.b.-/9_-東京-ab_é東京9_ .9_-_9_-/ 東京 _9東京9.9.\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"é_9aé/ba-.9/b.9a 東京éa9/b_9.-_é_éab_bab_\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" _b/9. 東京ba9/-_ _-.b東京-.éa9. 東京-_ / .b/\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"ba-/b東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" /\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"b_é東京9_\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-a-a _-.-a-/b.é東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"9東京 _é.9.éa\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-.9_9/-_-.é東京 /éa\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"é/9.bab/b/-_-. . /-_9/ a\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" .b.éab.\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"9_9_-abab/-東京b東京9東京éa . _ba-/-. _-ab東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"9ab東京 _ _-東京b_9a9a /ba9東京é_b_9.é. _é. .9東京 東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-東京-/é東京éa9_ 東京-/ba / .-/-東京é_-a 東京 .-/9/b/b/ 東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"b_9東京9東京é東京b.b/b東京9.é/ /9ab東京9.b/ba-_\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"9/b東京-a .-.b東京b.9ab/9_9/é_b. 東京baé_\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"é_9ab_é/ .-_-a a9東京b/é東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"ba .b/-/ba\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"éa a9東京é.9/-/\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"9東京 東京é/-_é.b/9_é. .é東京 .b/b/ a\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"9_9a _-東京 _-.\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" 東京 東京éa a9. 東京-_9/-.\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" _éa9a\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"9.-東京b_b.9. 東京 _9.-.\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-/9_é/é/baé東京-東京 _é/ / .-_b_ /b/éab/-a9.-_é_ .\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"éa _ba-_é/-_b. _9a _-/é/-.\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"b東京 aé.b_b東京ba-東京 /-. aba 東京é/-a9_9ab東京 a\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" /ba-_b東京9東京-.-/b_é.é東京9/9ab_-_-東京-. aé.-/9_9_9東京9東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" /ba9/\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-東京9_9/b東京-_9/éa _b/9aé_9/9/ _b東京-_é.-_9/\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-_é/é_ /9東京é東京 _\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"b.9abaé東京b.9.-東京-_ _-.-.-東京 東京9a _ .-.9_b/9東京9/\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"b_9/ .-. a-/ .9.é東京9/é.b/ 東京9.\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-ab_-東京-/b_-.-. /ba .9.b東京9a-_9_-.\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"9/é_b東京 .b東京9ab東京bab東京-aé東京 .9東京9.-.b/-.-_\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"éaé_-.9東京b/b/ /éaéa\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" aéaé/9/éaé/ .b東京-東京9a-.9_-東京9_b_ /éa9_9東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-/éaéa-aé_é東京b/ aé東京b.9a /\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-/-東京9/b.9/9.éa-/b/9/ba /b_ .é_é.b/é_\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"é.é_9/\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-東京9_é東京b_é_-_9/é東京9_-a /é/9.b.\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"9.é/ aé/é. 東京 .b_ a9aé_ba _-東京9abaé. .-東京é東京9東京9/\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"9東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-_ _b_9_9. aba ab_b_é/9/é/ /9東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"baé/ _9東京 _\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" /b. aé.9/b_ a-a-/é東京b.\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-.9_ 東京9/é東京é/é_é東京9東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"9/9東京é_é/ _b.é/ .b/9ab東京b.b_ 東京-_é東京-_9.b東京-a9_9.é.-東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"9.ba9_-.é/é東京9.9東京 aba\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"b東京 a 東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"ba9東京9/ .\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"é/baé.-a a a-. a _b東京b東京 aba-/-.b. /\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"b/-ab/é_\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"b/é/ _ /é. 東京b/ . _é_ aé/b_\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-東京-/b. ab_9.9/é/b東京b/b.-_éa\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"b.-/-.b_b.ba 東京9.é東京ba9_\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" _-_ ab.-東京9東京éa 東京-/9/\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" 東京b_éaé東京é_ a9東京é.9/9_-.é_9_b_9_9東京é_9/9.\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" .é/é_ /é. 東京9.\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"b_ _é.9.éa .9_éa-/ba9/-a9_ a-. 東京-_ / _ a a\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" _ /9東京-/ /b東京 _é_9ab. /-a9/9.é_9/ /b_-/ /9東京9ab.\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"b.é_9a a-a 東京b_ a-/b_é.9東京é_9_b/9a-_ 東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-_b.9.b.é/9/ _9東京-a9a-/9aé.b東京 /b.-a-/é東京é東京éaéa\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"b東京 東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"é東京ba .é.9.é.9/-/9東京9/b東京-東京9.éa-_\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"-東京9/-. 東京 東京 /9東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" a .-a-東京-東京-_ .9東京-_éa-東京9.b/ _é/\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"é.-/\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\" a-.é_ba 東京9.-_9a9ab_bab.baé_b_b.9/b/ 東京b_é.9.-東京\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"b/9ab.b/é.b東京-.é_b/-_é.\"]",
+        "passed": true
+      },
+      {
+        "name": "[\"--\",\"9.9.9a9a .ba 東京 /é_ /é.é/-_-aba .-.9.éa .9東京bab/\"]",
+        "passed": true
+      }
+    ],
+    "passed": true
+  },
+  "durationMs": 13089,
+  "protocol": "bitswarm.verification.v1",
+  "recipe": "1b5dda18458039b57bf35e64386a59c8baa12c5c1ec618688830d9e9020bc537",
+  "result": "4880fc5153c6eb5b93009024be981a383365aeae7e7c64906c29ec3878b7ac97",
+  "verifier": "basename-parity"
+}

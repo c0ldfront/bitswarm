@@ -1,0 +1,67 @@
+{
+  "protocol": 3,
+  "bun": "1.4.2",
+  "durationMs": 93948,
+  "rounds": 269,
+  "completedTasks": 180,
+  "acceptedTasks": 180,
+  "offlineRounds": 54,
+  "serverRestarts": 27,
+  "maxRoundMs": 1474,
+  "peakRssBytes": 115597312,
+  "compaction": {
+    "before": 780,
+    "after": 750,
+    "removed": 60,
+    "budget": {
+      "accounts": [
+        {
+          "author": "MCowBQYDK2VwAyEAX1tfTvkZoWawRdgR/HeSqCe8WMdQpsbGXrWjKoHNnBQ=",
+          "usage": {
+            "tokens": 0,
+            "costMicros": 0
+          },
+          "allocation": null,
+          "committed": {
+            "tokens": 0,
+            "costMicros": 0
+          }
+        },
+        {
+          "author": "MCowBQYDK2VwAyEA2BDjNKH71i8UdiJxyuMoLyMTc3u8q0HzWhyxYql8sOU=",
+          "usage": {
+            "tokens": 0,
+            "costMicros": 0
+          },
+          "allocation": null,
+          "committed": {
+            "tokens": 0,
+            "costMicros": 0
+          }
+        },
+        {
+          "author": "MCowBQYDK2VwAyEA0dkg6do3iNyrmPQ0rQu67RIrFf83AjTELKsv+GVmHsM=",
+          "usage": {
+            "tokens": 0,
+            "costMicros": 0
+          },
+          "allocation": null,
+          "committed": {
+            "tokens": 0,
+            "costMicros": 0
+          }
+        }
+      ],
+      "committed": {
+        "tokens": 0,
+        "costMicros": 0
+      },
+      "limits": {
+        "tokens": null,
+        "costMicros": null
+      }
+    }
+  },
+  "converged": true,
+  "limits": "Single-host rehearsal; not a public-internet capacity or Byzantine security claim"
+}

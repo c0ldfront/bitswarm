@@ -1,0 +1,57 @@
+{
+  "version": 4,
+  "name": "Application reconstruction swarm",
+  "description": "Recover a documented model of an application from owner-supplied artifacts. Separate observed behavior, static evidence, and hypotheses. Attach artifact hashes and precise offsets, symbols, or reproducible steps to every finding.",
+  "validators": [],
+  "quorum": 1,
+  "blocks": [
+    {
+      "id": "inventory",
+      "title": "Inventory and split the target",
+      "instructions": "Identify file formats, architecture, packages, entry points, and candidate subsystems. Produce an evidence-indexed map and list unknowns. Read the supplied file index and chunks without executing them.",
+      "requires": [],
+      "inputs": [],
+      "capabilities": ["static-analysis"]
+    },
+    {
+      "id": "interfaces",
+      "title": "Recover external interfaces",
+      "instructions": "Map APIs, CLI commands, file formats, and protocols. Include exact evidence and candidate input/output fixtures. Distinguish confirmed interfaces from inferred ones.",
+      "requires": ["inventory"],
+      "inputs": [],
+      "capabilities": ["static-analysis"]
+    },
+    {
+      "id": "storage",
+      "title": "Recover storage and state",
+      "instructions": "Identify persistent schemas, serialization, caches, lifecycle transitions and migrations. Record data structure layouts and evidence references.",
+      "requires": ["inventory"],
+      "inputs": [],
+      "capabilities": ["static-analysis"]
+    },
+    {
+      "id": "behavior",
+      "title": "Map application behavior",
+      "instructions": "Map control flow and key user journeys against the inventory. Define reproducible behavioral probes and record assumptions; do not claim runtime observations without captures.",
+      "requires": ["inventory"],
+      "inputs": [],
+      "capabilities": ["static-analysis"]
+    },
+    {
+      "id": "specification",
+      "title": "Assemble a reconstruction specification",
+      "instructions": "Combine accepted interface, storage and behavior findings. Resolve cross-subsystem inconsistencies, enumerate gaps, and define an implementation plan with traceable evidence.",
+      "requires": ["interfaces", "storage", "behavior"],
+      "inputs": [],
+      "capabilities": ["synthesis"]
+    },
+    {
+      "id": "parity",
+      "title": "Design a behavior parity suite",
+      "instructions": "Derive input/output fixtures and acceptance criteria from the accepted specification. Distinguish tests supported by observations from proposed probes requiring future runtime evidence.",
+      "requires": ["specification"],
+      "inputs": [],
+      "capabilities": ["test-design"]
+    }
+  ]
+}
