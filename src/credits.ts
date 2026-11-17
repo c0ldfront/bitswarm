@@ -4,7 +4,6 @@ import {
   makeEvent,
   keyValid,
   type Event,
-  type Manifest,
   type CreditBlock,
   type CreditTransfer,
 } from "./core.ts";
@@ -18,6 +17,16 @@ type Chain = {
   minted: Set<string>;
   parent?: string;
 };
+function confirmedAncestor(
+  head: Chain,
+  states: Map<string, Chain>,
+  depth: number,
+): Chain {
+  let ancestor = head;
+  for (let n = 0; n < depth && ancestor.parent; n++)
+    ancestor = states.get(ancestor.parent)!;
+  return ancestor;
+}
 export function creditState(store: Store, additional: Event[] = []) {
   const config = store.manifest.credits;
   assert(config, "Credits are not enabled in the genesis manifest");
@@ -51,6 +60,10 @@ export function creditState(store: Store, additional: Event[] = []) {
         assert(hasWork(unsigned(e), config.difficulty), "Invalid ledger work");
         const coins = new Map(parent.coins),
           minted = new Set(parent.minted);
+        const matureInputs =
+          p.transfers.length && config.confirmations
+            ? confirmedAncestor(parent, states, config.confirmations).coins
+            : undefined;
         let fees = 0;
         for (const id of p.transfers) {
           const transfer = byId.get(id);
@@ -66,6 +79,10 @@ export function creditState(store: Store, additional: Event[] = []) {
             assert(
               coin && coin.owner === transfer.author,
               "Missing or foreign credit input",
+            );
+            assert(
+              !matureInputs || matureInputs.has(reference),
+              "Credit input lacks confirmation depth",
             );
             input += coin.amount;
             assert(Number.isSafeInteger(input), "Credit overflow");
@@ -115,9 +132,7 @@ export function creditState(store: Store, additional: Event[] = []) {
     (a, b) => b.height - a.height || a.head.localeCompare(b.head),
   );
   const tip = ordered[0];
-  let confirmed = tip;
-  for (let n = 0; n < config.confirmations && confirmed.parent; n++)
-    confirmed = states.get(confirmed.parent)!;
+  const confirmed = confirmedAncestor(tip, states, config.confirmations);
   const balances = (chain: Chain) => {
     const accounts: Record<string, number> = {};
     for (const coin of chain.coins.values())
@@ -146,8 +161,9 @@ export function mineCredits(
   assert(config, "Credits disabled");
   const current = creditState(store);
   const time = Date.now(),
-    nonce = crypto.randomUUID();
-  let payload: CreditBlock = {
+    nonce = crypto.randomUUID(),
+    swarm = digest(store.manifest);
+  const payload: CreditBlock = {
     kind: "creditblock",
     parent: current.tip.head,
     work: 0,
@@ -160,7 +176,7 @@ export function mineCredits(
       hasWork(
         {
           version: store.manifest.version,
-          swarm: digest(store.manifest),
+          swarm,
           author: store.who.publicKey,
           time,
           nonce,
@@ -199,7 +215,7 @@ export function transferCredits(
   let total = 0;
   const inputs: string[] = [];
   for (const [id, coin] of state.confirmed.coins)
-    if (coin.owner === store.who.publicKey) {
+    if (coin.owner === store.who.publicKey && state.tip.coins.has(id)) {
       inputs.push(id);
       total += coin.amount;
       if (total >= amount + fee) break;

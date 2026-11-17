@@ -1,15 +1,28 @@
-import { multiaddr } from "@multiformats/multiaddr";
+import { multiaddr, type Multiaddr } from "@multiformats/multiaddr";
 import { assert, isHash } from "./core.ts";
 
 // A swarm URI identifies an immutable work manifest. Peers are replaceable
 // bootstrap hints, never the authority for the identity of the work.
 export type SwarmLink = { swarm: string; name?: string; peers: string[] };
+export function discoveredPeerHints(
+  addresses: Multiaddr[],
+  peerId: string,
+): string[] {
+  return addresses.flatMap((address) => {
+    // The binary form normalizes CID and base58 spellings of the same peer ID.
+    const canonical = multiaddr(address.bytes);
+    const destination = canonical.getComponents().at(-1);
+    if (destination?.name === "p2p")
+      return destination.value === peerId ? ["libp2p:" + canonical] : [];
+    return ["libp2p:" + canonical.encapsulate("/p2p/" + peerId)];
+  });
+}
 export function peerOrigin(peer: string): string {
   if (peer.startsWith("libp2p:")) {
-    const address = multiaddr(peer.slice(7));
+    const address = multiaddr(multiaddr(peer.slice(7)).bytes);
     assert(
-      address.toString().includes("/p2p/"),
-      "Mesh peer address needs a peer ID",
+      address.getComponents().at(-1)?.name === "p2p",
+      "Mesh peer address needs a destination peer ID",
     );
     return "libp2p:" + address.toString();
   }

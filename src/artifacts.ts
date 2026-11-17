@@ -1,14 +1,16 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   openSync,
   closeSync,
   fstatSync,
+  linkSync,
+  lstatSync,
   readSync,
   writeSync,
   unlinkSync,
   readFileSync,
 } from "node:fs";
-import { basename } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { assert, canonical, hash } from "./core.ts";
 export function chunkFile(path: string) {
   const data = readFileSync(path);
@@ -85,7 +87,10 @@ export function planFile(path: string) {
           const bytes = readSync(fd, buffer, 0, buffer.length, null);
           if (!bytes) break;
           assert(n < chunks.length, "Input changed during import");
-          put(buffer.subarray(0, bytes), chunks[n++]);
+          const piece = Buffer.from(buffer.subarray(0, bytes));
+          const id = chunks[n++];
+          assert(hash(piece) === id, "Input changed during import");
+          put(piece, id);
         }
         assert(n === chunks.length, "Input changed during import");
         put(index, root);
@@ -117,29 +122,43 @@ export function restoreFile(
       typeof index.sha256 === "string",
     "Invalid file index",
   );
-  const fd = openSync(destination, "wx", 0o600);
-  let size = 0,
-    ok = false;
+  if (lstatSync(destination, { throwIfNoEntry: false }))
+    throw Object.assign(
+      new Error(`EEXIST: destination already exists: ${destination}`),
+      {
+        code: "EEXIST",
+        path: destination,
+      },
+    );
+  const temporary = join(
+    dirname(resolve(destination)),
+    `.bitswarm-restore-${randomUUID()}`,
+  );
+  const fd = openSync(temporary, "wx", 0o600);
+  let size = 0;
   const whole = createHash("sha256");
   try {
-    for (const id of index.chunks) {
-      const chunk = read(id);
-      assert(chunk && hash(chunk) === id, "Missing or corrupt source chunk");
-      size += chunk.length;
-      assert(size <= index.size, "File size exceeds index");
-      whole.update(chunk);
-      let offset = 0;
-      while (offset < chunk.length)
-        offset += writeSync(fd, chunk, offset, chunk.length - offset);
+    try {
+      for (const id of index.chunks) {
+        const chunk = read(id);
+        assert(chunk && hash(chunk) === id, "Missing or corrupt source chunk");
+        size += chunk.length;
+        assert(size <= index.size, "File size exceeds index");
+        whole.update(chunk);
+        let offset = 0;
+        while (offset < chunk.length)
+          offset += writeSync(fd, chunk, offset, chunk.length - offset);
+      }
+      assert(
+        size === index.size && whole.digest("hex") === index.sha256,
+        "Full-file integrity verification failed",
+      );
+    } finally {
+      closeSync(fd);
     }
-    assert(
-      size === index.size && whole.digest("hex") === index.sha256,
-      "Full-file integrity verification failed",
-    );
-    ok = true;
+    linkSync(temporary, destination);
     return { path: destination, size, sha256: index.sha256 };
   } finally {
-    closeSync(fd);
-    if (!ok) unlinkSync(destination);
+    unlinkSync(temporary);
   }
 }

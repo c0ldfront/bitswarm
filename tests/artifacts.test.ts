@@ -1,8 +1,16 @@
 import { test, expect } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { chunkFile } from "../src/artifacts.ts";
+import { chunkFile, restoreFile } from "../src/artifacts.ts";
 import { hash } from "../src/core.ts";
 test("file chunks preserve ordering, content identities and full-file integrity", () => {
   const dir = mkdtempSync(join(tmpdir(), "bitswarm-chunks-"));
@@ -37,8 +45,7 @@ test("file chunks preserve ordering, content identities and full-file integrity"
 });
 
 test("streaming import resumes chunks and restore rejects corrupt content", async () => {
-  const { planFile, restoreFile } = await import("../src/artifacts.ts");
-  const { readFileSync } = await import("node:fs");
+  const { planFile } = await import("../src/artifacts.ts");
   const dir = mkdtempSync(join(tmpdir(), "bitswarm-stream-"));
   try {
     const path = join(dir, "source");
@@ -57,7 +64,84 @@ test("streaming import resumes chunks and restore rejects corrupt content", asyn
     expect(() =>
       restoreFile((id) => objects.get(id), plan.root, join(dir, "bad")),
     ).toThrow("corrupt");
+    expect(readdirSync(dir).sort()).toEqual(["restored", "source"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("restore publishes verified bytes atomically and preserves a competing writer", () => {
+  const dir = mkdtempSync(join(tmpdir(), "bitswarm-publish-"));
+  try {
+    const source = join(dir, "source");
+    const destination = join(dir, "output");
+    const contents = Buffer.concat([
+      Buffer.alloc(256 * 1024, 41),
+      Buffer.from("last"),
+    ]);
+    writeFileSync(source, contents);
+    const { root, objects } = chunkFile(source);
+    const bytes = new Map(objects.map(({ id, data }) => [id, data]));
+    const last = objects[2].id;
+    const read = (id: string) => {
+      if (id === last) expect(existsSync(destination)).toBe(false);
+      return bytes.get(id);
+    };
+    restoreFile(read, root, destination);
+    expect(readFileSync(destination)).toEqual(contents);
+    expect(statSync(destination).mode & 0o777).toBe(0o600);
+    rmSync(destination);
+    expect(() =>
+      restoreFile(
+        (id) => {
+          const chunk = read(id);
+          if (id === last)
+            writeFileSync(destination, "other writer", { flag: "wx" });
+          return chunk;
+        },
+        root,
+        destination,
+      ),
+    ).toThrow(/EEXIST/);
+    expect(readFileSync(destination, "utf8")).toBe("other writer");
+    expect(() =>
+      restoreFile(
+        (id) => {
+          expect(id).toBe(root);
+          return bytes.get(id);
+        },
+        root,
+        destination,
+      ),
+    ).toThrow(/EEXIST/);
+    expect(readdirSync(dir).sort()).toEqual(["output", "source"]);
+  } finally {
+    rmSync(dir, { force: true, recursive: true });
+  }
+});
+
+test("streaming import hands off stable chunk bytes and detects source changes before publishing an index", async () => {
+  const { planFile } = await import("../src/artifacts.ts");
+  const path = mkdtempSync(join(tmpdir(), "bitswarm-import-")),
+    source = join(path, "two");
+  try {
+    const bytes = Buffer.concat([
+      Buffer.alloc(256 * 1024, 1),
+      Buffer.alloc(256 * 1024, 2),
+    ]);
+    writeFileSync(source, bytes);
+    const plan = planFile(source),
+      objects = new Map<string, Uint8Array>();
+    plan.seed((data, id) => objects.set(id, data));
+    for (const [id, data] of objects) expect(hash(data)).toBe(id);
+    objects.clear();
+    bytes[bytes.length - 1] = 3;
+    writeFileSync(source, bytes);
+    expect(() => plan.seed((data, id) => objects.set(id, data))).toThrow(
+      "changed",
+    );
+    expect(objects.has(plan.root)).toBe(false);
+  } finally {
+    rmSync(path, { force: true, recursive: true });
   }
 });

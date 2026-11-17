@@ -5,6 +5,7 @@ import {
   keyValid,
   makeEvent,
   validateManifest,
+  verificationMatches,
   type Block,
   type ControlAction,
   type Event,
@@ -20,6 +21,7 @@ export type Governance = ProjectionOptions & {
   conflict: boolean;
   applied: string[];
   authorities: Map<string, string>;
+  lastRevocation: Map<string, number>;
 };
 export function governance(manifest: Manifest, events: Event[]): Governance {
   const state: Governance = {
@@ -28,6 +30,7 @@ export function governance(manifest: Manifest, events: Event[]): Governance {
     head: digest(manifest),
     conflict: false,
     applied: [],
+    lastRevocation: new Map(),
     authorities: new Map([
       [digest(manifest), manifest.planner || manifest.validators[0]],
     ]),
@@ -160,12 +163,13 @@ export function governance(manifest: Manifest, events: Event[]): Governance {
           !a.evidence.every((id) => byId.has(id))
         )
           break;
+        assert(
+          a.results.every((id) => byId.get(id)?.payload.kind === "result"),
+          "Checkpoint must reference results",
+        );
         for (const id of a.results) {
           const result = byId.get(id)!;
-          assert(
-            result.payload.kind === "result",
-            "Checkpoint must reference results",
-          );
+          if (result.payload.kind !== "result") continue;
           state.checkpoints!.set(result.payload.block, {
             result: id,
             evidence: new Set(a.evidence),
@@ -180,12 +184,13 @@ export function governance(manifest: Manifest, events: Event[]): Governance {
             "Issued budgets cannot be reclaimed without reconciling expenditure",
           );
         const budget = a.budget || old?.budget;
-        state.members!.set(a.key, {
+        const members = new Map(state.members);
+        members.set(a.key, {
           role: a.role,
           enabled: a.enabled,
           ...(budget ? { budget } : {}),
         });
-        const issued = [...state.members!.values()].reduce(
+        const issued = [...members.values()].reduce(
           (sum, m) => ({
             tokens: sum.tokens + (m.budget?.maxTokens ?? 0),
             cost: sum.cost + (m.budget?.maxCostMicros ?? 0),
@@ -199,6 +204,8 @@ export function governance(manifest: Manifest, events: Event[]): Governance {
               (state.manifest.policy?.maxCostMicros ?? Number.MAX_SAFE_INTEGER),
           "Contributor allocations exceed project budget",
         );
+        state.members = members;
+        if (!a.enabled) state.lastRevocation.set(a.key, state.epochs!.size);
       } else if (a.type === "delegate") state.planner = a.key;
       else if (a.type === "policy") {
         const policy = { ...state.manifest.policy, ...a.policy };
@@ -214,7 +221,9 @@ export function governance(manifest: Manifest, events: Event[]): Governance {
             issued.cost <= (policy.maxCostMicros ?? Number.MAX_SAFE_INTEGER),
           "Policy cannot invalidate issued budget allocations",
         );
-        state.manifest.policy = policy;
+        const candidate = { ...state.manifest, policy };
+        validateManifest(candidate);
+        state.manifest = candidate;
       }
       state.head = e.id;
       state.epochs!.set(state.head, state.epochs!.size);
@@ -271,6 +280,13 @@ export function control(store: Store, action: ControlAction): Event {
     if ((action.type === "member" && action.budget) || action.type === "policy")
       enforceBudget(next, store.events());
     store.addEvent(event);
+    if (action.type === "checkpoint") {
+      const frozen = new Set(store.state().map((state) => state.accepted?.id));
+      assert(
+        action.results.every((id) => frozen.has(id)),
+        "Checkpoint evidence must preserve acceptance",
+      );
+    }
     return event;
   })();
 }
@@ -286,6 +302,9 @@ export function checkpoint(store: Store) {
     );
   const out: Event[] = [];
   for (const result of results) {
+    if (result.payload.kind !== "result") continue;
+    const id = result.payload.block;
+    const block = governance.manifest.blocks.find((b) => b.id === id)!;
     const evidence = [result.id];
     for (const validator of store.manifest.validators) {
       const votes = store
@@ -294,6 +313,7 @@ export function checkpoint(store: Store) {
           (e) =>
             e.author === validator &&
             e.payload.kind === "review" &&
+            e.time >= result.time &&
             e.payload.result === result.id,
         );
       if (
@@ -312,7 +332,8 @@ export function checkpoint(store: Store) {
             e.author === validator &&
             e.payload.kind === "verification" &&
             e.payload.result === result.id &&
-            e.payload.passed,
+            e.payload.passed &&
+            verificationMatches(e, block, result.id, store.blob.bind(store)),
         );
       if (check) evidence.push(check.id);
     }

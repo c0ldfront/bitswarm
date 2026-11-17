@@ -1,6 +1,14 @@
 #!/usr/bin/env bun
 import { parseArgs } from "node:util";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { execFileSync } from "node:child_process";
@@ -63,7 +71,7 @@ restore  --state DIR --hash ROOT --output P  Restore a file and verify full-file
 pin      --state DIR --hash HASH             Retain a local object through garbage collection
 unpin    --state DIR --hash HASH
 get      --state DIR --hash HASH --output P  Write a raw content-addressed object
-claim    --state DIR --block ID              Reserve a ready block
+claim    --state DIR --block ID [--ttl 300]   Reserve a ready block
 submit   --state DIR --claim HASH --file P --summary TEXT
 review   --state DIR --result HASH --verdict approve|reject --reason TEXT
 work     --state DIR [--capability NAME ...] [--watch] [--ttl 300]
@@ -96,6 +104,24 @@ open     swarm://...                         Preview using the project-specific 
 Networking reads BITSWARM_TOKEN (shared secret, minimum 32 characters).
 Run peer and work against the same state directory in separate terminals.
 `;
+
+async function untilInterrupted(run: (signal: AbortSignal) => Promise<void>) {
+  const stop = new AbortController();
+  const interrupt = (signal: NodeJS.Signals) => {
+    process.exitCode = signal === "SIGINT" ? 130 : 143;
+    stop.abort();
+  };
+  process.once("SIGINT", interrupt);
+  process.once("SIGTERM", interrupt);
+  try {
+    await run(stop.signal);
+  } catch (error) {
+    if (!stop.signal.aborted) throw error;
+  } finally {
+    process.off("SIGINT", interrupt);
+    process.off("SIGTERM", interrupt);
+  }
+}
 
 async function main() {
   const args = process.argv.slice(2);
@@ -202,7 +228,10 @@ async function main() {
       parent: { type: "string" },
       selected: { type: "string" },
       proposal: { type: "string" },
-      isolation: { type: "string", default: "process" },
+      isolation: {
+        type: "string",
+        default: command === "verify" ? "bwrap" : "process",
+      },
       image: { type: "string" },
       listen: { type: "string", multiple: true },
       bootstrap: { type: "string", multiple: true, default: [] },
@@ -244,6 +273,12 @@ async function main() {
     ["process", "bwrap", "docker"].includes(v.isolation!),
     "Invalid isolation mode",
   );
+  const ttl = Number(v.ttl) * 1000;
+  if (["claim", "renew", "work"].includes(command))
+    assert(
+      Number.isSafeInteger(ttl) && ttl >= 2000 && ttl <= 3600000,
+      "TTL must be 2–3600 seconds",
+    );
   const token = process.env.BITSWARM_TOKEN || "";
   if (command === "install-handler") {
     const { installHandler } = await import("./desktop.ts");
@@ -282,7 +317,7 @@ async function main() {
     if (input)
       for (const b of m.blocks.filter((b) => b.requires.length === 0))
         b.inputs = [...new Set([...b.inputs, input.root])];
-    const files = [];
+    const files: ReturnType<typeof planFile>[] = [];
     for (const [items, optional] of [
       [v.taskFile ?? [], false],
       [v.optionalFile ?? [], true],
@@ -298,11 +333,12 @@ async function main() {
       }
     }
     validateManifest(m);
-    const store = new Store(v.state!, m);
-    try {
+    const store = new Store(v.state!, m, undefined, (target) => {
       for (const file of files)
-        file.seed((data, id) => store.addBlob(data, id));
-      input?.seed((data, id) => store.addBlob(data, id));
+        file.seed((data, id) => target.addBlob(data, id));
+      input?.seed((data, id) => target.addBlob(data, id));
+    });
+    try {
       out({
         swarm: digest(m),
         publicKey: store.who.publicKey,
@@ -361,9 +397,6 @@ async function main() {
     store.configure(profile);
   };
   if (command === "join" || command === "preview") {
-    const savedGrant = join(v.state!, "access.json");
-    if (!v.invite && existsSync(savedGrant)) v.invite = savedGrant;
-    if (!v.invite && !v.signed && !v.public && token) requireToken(token);
     assert(
       positionals.length <= 1 && !(v.link && positionals.length),
       "Provide one swarm link",
@@ -375,11 +408,26 @@ async function main() {
       "Conflicting swarm identities",
     );
     const expected = link?.swarm || need(v.swarm, "swarm");
-    const peers = [
-      ...new Set([...v.peer!, ...(link?.peers || [])].map(peerOrigin)),
-    ];
+    const savedGrant = join(v.state!, "access.json");
+    let invitation: Grant | undefined;
+    if (v.invite) {
+      invitation = JSON.parse(readFileSync(v.invite, "utf8")) as Grant;
+      assert(
+        invitation.swarm === expected,
+        "Invitation belongs to another swarm",
+      );
+    } else if (!v.signed && !v.public && existsSync(savedGrant)) {
+      const saved: Grant = JSON.parse(readFileSync(savedGrant, "utf8"));
+      if (saved.swarm === expected) invitation = saved;
+    }
+    if (!invitation && !v.signed && !v.public && token) requireToken(token);
+    const peers = new Set([
+      ...v.peer!.map(peerOrigin),
+      ...(link?.peers ?? []),
+      ...Store.savedPeers(v.state!, expected),
+    ]);
     assert(
-      peers.length > 0 || v.bootstrap!.length || v.lan,
+      peers.size > 0 || v.bootstrap!.length || v.lan,
       "No bootstrap hints; add --peer URL, --bootstrap MULTIADDR, or --lan",
     );
     if (command === "join")
@@ -393,28 +441,8 @@ async function main() {
     const joiningIdentity = existsSync(joinKey)
       ? JSON.parse(readFileSync(joinKey, "utf8"))
       : identity();
-    const dialer =
-      peers.some((p) => p.startsWith("libp2p:")) || v.bootstrap!.length || v.lan
-        ? await (
-            await import("./mesh.ts")
-          ).createDialer(
-            v.state!,
-            joiningIdentity.publicKey,
-            expected,
-            v.bootstrap,
-            v.lan,
-            command === "preview",
-          )
-        : undefined;
-    if (!peers.length && dialer)
-      peers.push(
-        ...(await dialer.findPeers()),
-        ...v.bootstrap!.map((a) =>
-          peerOrigin("libp2p:" + a.replace(/^libp2p:/, "")),
-        ),
-      );
     let auth: Auth =
-      v.public || (!token && !v.invite && !v.signed)
+      v.public || (!token && !invitation && !v.signed)
         ? {
             identity: joiningIdentity,
             swarm: expected,
@@ -423,8 +451,7 @@ async function main() {
         : v.signed
           ? { identity: joiningIdentity, swarm: expected }
           : token;
-    if (v.invite) {
-      const invitation: Grant = JSON.parse(readFileSync(v.invite, "utf8"));
+    if (invitation) {
       assert(
         invitation.subject === joiningIdentity.publicKey,
         "Invitation belongs to a different contributor identity",
@@ -435,19 +462,48 @@ async function main() {
         "Run keygen for this state before requesting an invitation",
       );
       auth = {
-        identity: JSON.parse(readFileSync(keyPath, "utf8")),
+        identity: joiningIdentity,
         grant: invitation,
       };
     }
     const failures: string[] = [];
+    let dialer:
+      Awaited<ReturnType<typeof import("./mesh.ts").createDialer>> | undefined;
+    const getDialer = async () => {
+      if (!dialer) {
+        const { createDialer } = await import("./mesh.ts");
+        dialer = await createDialer(
+          v.state!,
+          joiningIdentity.publicKey,
+          expected,
+          v.bootstrap,
+          v.lan,
+          command === "preview",
+        );
+      }
+      return dialer;
+    };
+    async function* candidates() {
+      yield* peers;
+      if (!v.bootstrap!.length && !v.lan) return;
+      const mesh = await getDialer();
+      const routes = [
+        ...(await mesh.findPeers()),
+        ...v.bootstrap!.map((a) =>
+          peerOrigin("libp2p:" + a.replace(/^libp2p:/, "")),
+        ),
+      ];
+      for (const peer of new Set(routes)) if (!peers.has(peer)) yield peer;
+    }
     try {
-      for (const peer of peers) {
+      for await (const peer of candidates()) {
         let store: Store | undefined;
         try {
+          if (peer.startsWith("libp2p:")) await getDialer();
           if (
             command === "preview" &&
             !token &&
-            !v.invite &&
+            !invitation &&
             !v.signed &&
             !v.public
           ) {
@@ -514,20 +570,27 @@ async function main() {
             upload: "results",
           });
           setProfile(store, fresh);
-          if (v.invite)
-            writeFileSync(
-              join(v.state!, "access.json"),
-              canonical((auth as { grant: Grant }).grant),
-              { mode: 0o600 },
-            );
+          const result = await sync(store, peer, auth, {
+            metadataOnly: v.metadataOnly,
+            blocks: v.only,
+          });
+          if (invitation && v.invite) {
+            const temporary = savedGrant + "." + crypto.randomUUID();
+            try {
+              writeFileSync(temporary, canonical(invitation), {
+                mode: 0o600,
+                flag: "wx",
+              });
+              renameSync(temporary, savedGrant);
+            } finally {
+              rmSync(temporary, { force: true });
+            }
+          }
           out({
             swarm: digest(m),
             publicKey: store.who.publicKey,
             peer,
-            ...(await sync(store, peer, auth, {
-              metadataOnly: v.metadataOnly,
-              blocks: v.only,
-            })),
+            ...result,
           });
           return;
         } catch (e) {
@@ -556,10 +619,16 @@ async function main() {
     out({ hash: await (await import("./recipe.ts")).recipeHash(adapter) });
     return;
   }
+  const automationConfig =
+    command === "run"
+      ? JSON.parse(readFileSync(need(v.config, "config"), "utf8"))
+      : undefined;
   const store = new Store(v.state!);
   const dialer =
-    ["work", "claim", "verify", "sync", "run"].includes(command) &&
-    [...store.peers(), ...v.peer!].some((p) => p.startsWith("libp2p:"))
+    ["peer", "work", "claim", "verify", "sync", "run"].includes(command) &&
+    [...store.peers(), ...v.peer!, ...(automationConfig?.peers ?? [])].some(
+      (p) => p.startsWith("libp2p:"),
+    )
       ? await (
           await import("./mesh.ts")
         ).createDialer(
@@ -624,21 +693,15 @@ async function main() {
         out((await import("./operations.ts")).compact(store));
         break;
       case "run": {
-        const config = JSON.parse(
-          readFileSync(need(v.config, "config"), "utf8"),
-        );
+        const config = automationConfig;
         const server = config.listen
           ? serve(store, token, config.listen.port, config.listen.host)
           : undefined;
-        const stop = new AbortController();
-        process.once("SIGINT", () => stop.abort());
-        process.once("SIGTERM", () => stop.abort());
         try {
-          out(
-            await (
-              await import("./autopilot.ts")
-            ).runAutomation(store, config, stop.signal),
-          );
+          await untilInterrupted(async (signal) => {
+            const { runAutomation } = await import("./autopilot.ts");
+            out(await runAutomation(store, config, signal));
+          });
         } finally {
           server?.stop(true);
         }
@@ -832,58 +895,86 @@ async function main() {
         );
         break;
       case "invite": {
+        assert(
+          store.manifest.restricted || !(v.only || v.root),
+          "Scoped invitations require a restricted swarm",
+        );
         const key = need(v.publicKey, "publicKey");
         assert(
           ["worker", "reader", "reviewer"].includes(v.role!),
           "Invalid contributor role",
         );
-        const invitation = grant(
-          store,
-          key,
-          v.role as Grant["role"],
-          Date.now() + Number(v.expires) * 1000,
-          store.manifest.restricted
-            ? { blocks: v.only ?? [], roots: v.root ?? [] }
-            : undefined,
-        );
-        control(store, {
-          type: "member",
-          key,
-          role: invitation.role,
-          enabled: true,
-          ...(v.tokens !== undefined || v.costMicros !== undefined
-            ? {
-                budget: {
-                  maxTokens: Number(v.tokens || 0),
-                  maxCostMicros: Number(v.costMicros || 0),
-                  maxConcurrent: Number(v.concurrency),
-                },
-              }
-            : {}),
-        });
-        if (v.output)
-          writeFileSync(v.output, canonical(invitation), {
-            flag: "wx",
-            mode: 0o600,
-          });
-        else out(invitation);
+        const invitation = store.db
+          .transaction(() => {
+            const ticket = grant(
+              store,
+              key,
+              v.role as Grant["role"],
+              Date.now() + Number(v.expires) * 1000,
+              store.manifest.restricted
+                ? { blocks: v.only ?? [], roots: v.root ?? [] }
+                : undefined,
+            );
+            control(store, {
+              type: "member",
+              key,
+              role: ticket.role,
+              enabled: true,
+              ...(v.tokens !== undefined || v.costMicros !== undefined
+                ? {
+                    budget: {
+                      maxTokens: Number(v.tokens || 0),
+                      maxCostMicros: Number(v.costMicros || 0),
+                      maxConcurrent: Number(v.concurrency),
+                    },
+                  }
+                : {}),
+            });
+            if (v.output)
+              writeFileSync(v.output, canonical(ticket), {
+                flag: "wx",
+                mode: 0o600,
+              });
+            return ticket;
+          })
+          .immediate();
+        if (!v.output) out(invitation);
         break;
       }
       case "renew": {
-        const claim = store.event(need(v.claim, "claim"));
-        assert(
-          claim?.payload.kind === "claim" &&
-            claim.author === store.who.publicKey &&
-            claim.payload.expires > Date.now(),
-          "Renew a live local claim",
+        out(
+          store.db
+            .transaction(() => {
+              const lease = store.event(need(v.claim, "claim")),
+                now = Date.now();
+              assert(
+                lease?.payload.kind === "claim" &&
+                  lease.author === store.who.publicKey,
+                "Renew a live local claim",
+              );
+              const state = store
+                .state(now)
+                .find((s) => s.claims.some((c) => c.id === lease.id));
+              assert(
+                state &&
+                  !["cancelled", "blocked", "accepted"].includes(state.status),
+                "Renew a live local claim",
+              );
+              const expires = Math.min(
+                now + ttl,
+                lease.time + (state.block.contract?.timeoutMs ?? 3600000),
+              );
+              const event = makeEvent(
+                store.manifest,
+                store.who,
+                { kind: "renew", claim: lease.id, expires },
+                now,
+              );
+              store.addEvent(event);
+              return event;
+            })
+            .immediate(),
         );
-        const event = makeEvent(store.manifest, store.who, {
-          kind: "renew",
-          claim: claim.id,
-          expires: Date.now() + Number(v.ttl) * 1000,
-        });
-        store.addEvent(event);
-        out(event);
         break;
       }
       case "recover": {
@@ -907,15 +998,18 @@ async function main() {
         break;
       }
       case "verify":
-        out(
-          await verifyResult(
-            store,
-            need(v.result, "result"),
-            adapter,
-            v.isolation as Isolation,
-            v.image,
-          ),
-        );
+        await untilInterrupted(async (signal) => {
+          out(
+            await verifyResult(
+              store,
+              need(v.result, "result"),
+              adapter,
+              v.isolation as Isolation,
+              v.image,
+              signal,
+            ),
+          );
+        });
         break;
       case "gc":
         out(store.collect());
@@ -991,8 +1085,14 @@ async function main() {
         break;
       case "put": {
         const file = planFile(need(v.file, "file"));
-        file.seed((data, id) => store.addBlob(data, id));
-        store.db.query("INSERT OR IGNORE INTO pins VALUES (?)").run(file.root);
+        store.db
+          .transaction(() => {
+            file.seed((data, id) => store.addBlob(data, id));
+            store.db
+              .query("INSERT OR IGNORE INTO pins VALUES (?)")
+              .run(file.root);
+          })
+          .immediate();
         out({ root: file.root, objects: file.objects });
         break;
       }
@@ -1027,7 +1127,7 @@ async function main() {
       }
       case "claim":
         await prepareTask(store, need(v.block, "block"));
-        out(claim(store, need(v.block, "block")));
+        out(claim(store, need(v.block, "block"), ttl));
         break;
       case "submit":
         out(
@@ -1085,35 +1185,33 @@ async function main() {
         break;
       }
       case "work": {
-        const ttl = Number(v.ttl) * 1000;
-        assert(
-          Number.isSafeInteger(ttl) && ttl >= 2000 && ttl <= 3_600_000,
-          "TTL must be 2–3600 seconds",
-        );
         assert(adapter.length, "Provide adapter after --");
-        do {
-          try {
-            const event = await runWorker(store, adapter, v.capability, ttl, {
-              isolation: v.isolation as Isolation,
-              image: v.image,
-            });
-            out(
-              event
-                ? {
-                    submitted: event.id,
-                    block:
-                      event.payload.kind === "result"
-                        ? event.payload.block
-                        : "",
-                  }
-                : { idle: true },
-            );
-          } catch (e) {
-            if (!v.watch) throw e;
-            console.error(e instanceof Error ? e.message : e);
-          }
-          if (v.watch) await Bun.sleep(2000);
-        } while (v.watch);
+        await untilInterrupted(async (signal) => {
+          do {
+            try {
+              const event = await runWorker(store, adapter, v.capability, ttl, {
+                isolation: v.isolation as Isolation,
+                image: v.image,
+                signal,
+              });
+              out(
+                event
+                  ? {
+                      submitted: event.id,
+                      block:
+                        event.payload.kind === "result"
+                          ? event.payload.block
+                          : "",
+                    }
+                  : { idle: true },
+              );
+            } catch (e) {
+              if (signal.aborted || !v.watch) throw e;
+              console.error(e instanceof Error ? e.message : e);
+            }
+            if (v.watch) await delay(2000, undefined, { signal });
+          } while (v.watch && !signal.aborted);
+        });
         break;
       }
       case "export": {

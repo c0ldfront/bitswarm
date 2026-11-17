@@ -1,4 +1,4 @@
-import { assert, claimExpiration, type Event, type Manifest } from "./core.ts";
+import { assert, type Event, type Manifest } from "./core.ts";
 import type { Governance } from "./control.ts";
 export type Amount = { tokens: number; costMicros: number };
 export function expenditure(
@@ -9,34 +9,34 @@ export function expenditure(
   const claims = new Map(
     events.filter((e) => e.payload.kind === "claim").map((e) => [e.id, e]),
   );
+  const reported = new Map<string, Amount>();
+  for (const e of events) {
+    const p = e.payload;
+    if ((p.kind !== "result" && p.kind !== "failure") || !p.usage) continue;
+    const claim = claims.get(p.claim);
+    if (
+      !claim ||
+      claim.payload.kind !== "claim" ||
+      e.author !== claim.author ||
+      (p.kind === "result" && p.block !== claim.payload.block)
+    )
+      continue;
+    const prior = reported.get(claim.id);
+    reported.set(claim.id, {
+      tokens: Math.max(prior?.tokens ?? 0, p.usage.tokens),
+      costMicros: Math.max(prior?.costMicros ?? 0, p.usage.costMicros),
+    });
+  }
+  const contracts = new Map(manifest.blocks.map((b) => [b.id, b.contract]));
   const totals = new Map<string, Amount>();
   for (const claim of claims.values()) {
     if (claim.payload.kind !== "claim") continue;
-    const reports = events.filter(
-      (e) =>
-        e.author === claim.author &&
-        (e.payload.kind === "result" || e.payload.kind === "failure") &&
-        e.payload.claim === claim.id,
-    );
-    const spent = reports.reduce(
-      (a, e) => {
-        const p = e.payload;
-        const u =
-          p.kind === "result" || p.kind === "failure" ? p.usage : undefined;
-        return {
-          tokens: Math.max(a.tokens, u?.tokens ?? 0),
-          costMicros: Math.max(a.costMicros, u?.costMicros ?? 0),
-        };
-      },
-      { tokens: 0, costMicros: 0 },
-    );
-    if (!reports.length) {
-      const contract = manifest.blocks.find(
-        (b) => b.id === (claim.payload as { block: string }).block,
-      )?.contract;
-      spent.tokens = contract?.maxTokens ?? 0;
-      spent.costMicros = contract?.maxCostMicros ?? 0;
-    }
+    const contract = contracts.get(claim.payload.block);
+    // A completion without usage cannot settle the original reservation.
+    const spent = reported.get(claim.id) ?? {
+      tokens: contract?.maxTokens ?? 0,
+      costMicros: contract?.maxCostMicros ?? 0,
+    };
     const prior = totals.get(claim.author) || { tokens: 0, costMicros: 0 };
     totals.set(claim.author, {
       tokens: prior.tokens + spent.tokens,

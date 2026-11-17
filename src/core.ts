@@ -333,13 +333,25 @@ export function validateManifest(m: Manifest): void {
   if (m.policy?.admission === "public")
     assert(m.version >= 3, "Public admission requires protocol 3");
   if (m.policy) validatePolicy(m.policy);
-  for (const b of m.blocks)
-    if (b.contract?.verifierHash || b.contract?.verificationQuorum)
-      assert(m.version >= 3, "Pinned verification requires protocol 3");
+  for (const { contract } of m.blocks) {
+    if (
+      contract?.verifierHash !== undefined ||
+      contract?.verificationQuorum !== undefined
+    ) {
+      assert(
+        m.version >= 3 && contract.verifier,
+        "Verification settings require a named verifier and protocol 3+",
+      );
+      assert(
+        (contract.verificationQuorum ?? m.quorum) <= m.validators.length,
+        "Verification quorum exceeds validator committee",
+      );
+    }
+  }
   for (const b of m.blocks)
     assert(!b.contract || validContract(b.contract), "Invalid task contract");
   topological(m); // Also rejects cycles and missing references.
-  assert(canonical(m).length <= MAX_BLOB, "Manifest too large");
+  assert(Buffer.byteLength(canonical(m)) <= MAX_BLOB, "Manifest too large");
 }
 export function validatePolicy(p: Policy) {
   assert(
@@ -438,7 +450,8 @@ export function validateEvent(e: Event, m: Manifest, now = Date.now()): void {
   );
   const { id, signature, ...body } = e;
   assert(
-    canonical(e).length <= 32_768 && id === digest({ ...body, signature }),
+    Buffer.byteLength(canonical(e)) <= 32_768 &&
+      id === digest({ ...body, signature }),
     "Invalid event hash or size",
   );
   assert(
@@ -636,7 +649,7 @@ export function claimExpiration(
   duration = 3_600_000,
 ): number {
   if (claim.payload.kind !== "claim") return 0;
-  let expiry = claim.payload.expires;
+  let expiry = Math.min(claim.payload.expires, claim.time + duration);
   const renewals = events
     .filter(
       (e) =>
@@ -653,6 +666,57 @@ export function claimExpiration(
         Math.min(renewal.payload.expires, claim.time + duration),
       );
   return expiry;
+}
+// Local attestation, replicated projection, and checkpoint selection share the same evidence rules.
+export function validVerificationChecks(
+  value: unknown,
+): value is { passed: boolean; checks: { passed: boolean }[] } {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    !("passed" in value) ||
+    typeof value.passed !== "boolean" ||
+    !("checks" in value) ||
+    !Array.isArray(value.checks) ||
+    !value.checks.length
+  )
+    return false;
+  return (
+    value.checks.every((check) => check && typeof check.passed === "boolean") &&
+    value.passed === value.checks.every((check) => check.passed)
+  );
+}
+export function verificationMatches(
+  event: Event,
+  block: Block,
+  resultId: string,
+  readBlob: (id: string) => Uint8Array | undefined,
+  expectedRecipe?: string,
+): boolean {
+  const evidence = event.payload,
+    contract = block.contract;
+  if (
+    evidence.kind !== "verification" ||
+    evidence.result !== resultId ||
+    !contract?.verifier ||
+    evidence.verifier !== contract.verifier
+  )
+    return false;
+  const bytes = readBlob(evidence.report);
+  if (!bytes) return false;
+  try {
+    const report = JSON.parse(Buffer.from(bytes).toString());
+    return (
+      report?.result === resultId &&
+      report.verifier === contract.verifier &&
+      (!contract.verifierHash || report.recipe === contract.verifierHash) &&
+      (!expectedRecipe || report.recipe === expectedRecipe) &&
+      validVerificationChecks(report.checks) &&
+      report.checks.passed === evidence.passed
+    );
+  } catch {
+    return false;
+  }
 }
 export type ProjectionOptions = {
   cancelled?: Set<string>;
@@ -677,6 +741,7 @@ export type ProjectionOptions = {
   prunedAttempts?: Map<string, number>;
   epochs?: Map<string, number>;
   resetEpoch?: Map<string, number>;
+  authorities?: Map<string, string>;
   readBlob?: (id: string) => Uint8Array | undefined;
 };
 export function project(
@@ -710,6 +775,12 @@ export function project(
       }
     });
     function claimEligible(e: Event): boolean {
+      if (e.payload.kind !== "claim" || e.payload.block !== block.id || !ready)
+        return false;
+      const planner =
+        (e.payload.epoch && options.authorities?.get(e.payload.epoch)) ||
+        m.planner ||
+        m.validators[0];
       const frozen =
         checkpoint &&
         byId.get(checkpoint.result)?.payload.kind === "result" &&
@@ -721,10 +792,8 @@ export function project(
           (m.policy?.admission === "invite" &&
             !options.members?.get(e.author)?.enabled &&
             !m.validators.includes(e.author) &&
-            e.author !== (m.planner || m.validators[0])))
+            e.author !== planner))
       )
-        return false;
-      if (e.payload.kind !== "claim" || e.payload.block !== block.id || !ready)
         return false;
       if (
         m.version >= 2 &&
@@ -794,44 +863,20 @@ export function project(
         const verifications = all.filter(
           (e) =>
             e.payload.kind === "verification" &&
-            e.payload.result === event.id &&
-            e.payload.verifier === block.contract?.verifier &&
             e.author !== event.author &&
             m.validators.includes(e.author) &&
-            hasBlob(e.payload.report) &&
-            (!checkpoint || checkpoint.evidence.has(e.id)),
+            (!checkpoint || checkpoint.evidence.has(e.id)) &&
+            !!options.readBlob &&
+            verificationMatches(e, block, event.id, options.readBlob),
         );
-        const verifierFailed =
-          !!block.contract?.verifier &&
-          verifications.some(
-            (e) => e.payload.kind === "verification" && !e.payload.passed,
-          );
+        const verifierFailed = verifications.some(
+          (e) => e.payload.kind === "verification" && !e.payload.passed,
+        );
         const verifiedAuthors = new Set(
           verifications
-            .filter((e) => {
-              if (
-                e.payload.kind !== "verification" ||
-                !e.payload.passed ||
-                !options.readBlob
-              )
-                return false;
-              try {
-                const report = JSON.parse(
-                  Buffer.from(options.readBlob(e.payload.report)!).toString(),
-                );
-                return (
-                  report.result === event.id &&
-                  report.verifier === block.contract!.verifier &&
-                  (!block.contract?.verifierHash ||
-                    report.recipe === block.contract.verifierHash) &&
-                  report.checks.passed &&
-                  report.checks.checks.length > 0 &&
-                  report.checks.checks.every((c: any) => c.passed === true)
-                );
-              } catch {
-                return false;
-              }
-            })
+            .filter(
+              (e) => e.payload.kind === "verification" && e.payload.passed,
+            )
             .map((e) => e.author),
         );
         const verified =
@@ -866,8 +911,6 @@ export function project(
         }
         const expired =
           !checkpoint &&
-          approvals.length < m.quorum &&
-          rejections.length < m.quorum &&
           now > event.time + (m.policy?.reviewTimeoutMs ?? 86_400_000);
         return {
           event,
@@ -881,19 +924,14 @@ export function project(
               : verified
                 ? "passed"
                 : "pending",
-          status: expired
-            ? "expired"
-            : !eligible
-              ? "pending"
-              : verifierFailed
-                ? "rejected"
-                : !verified
-                  ? "pending"
-                  : approvals.length >= m.quorum
-                    ? "accepted"
-                    : rejections.length >= m.quorum
-                      ? "rejected"
-                      : "pending",
+          status:
+            eligible && (verifierFailed || rejections.length >= m.quorum)
+              ? "rejected"
+              : eligible && verified && approvals.length >= m.quorum
+                ? "accepted"
+                : expired
+                  ? "expired"
+                  : "pending",
         };
       });
     const selection = checkpoint?.result || options.resolutions?.get(block.id);
@@ -909,6 +947,7 @@ export function project(
     const claims = all.filter(
       (e) =>
         e.payload.kind === "claim" &&
+        e.payload.block === block.id &&
         expiry(e) > now &&
         !failed.has(e.id) &&
         claimEligible(e) &&
@@ -916,23 +955,27 @@ export function project(
           (c) => c.eligible && (c.event.payload as Result).claim === e.id,
         ),
     );
+    const reset = options.resetEpoch?.get(block.id);
+    function countsAttempt(epoch: string | undefined) {
+      if (!epoch) return m.version === 1 && reset === undefined;
+      const index = options.epochs?.get(epoch);
+      if (m.version === 1 && reset === undefined) return true;
+      return index !== undefined && (reset === undefined || index >= reset);
+    }
     const attempts = all.filter(
       (e) =>
         e.payload.kind === "claim" &&
         e.payload.block === block.id &&
-        (options.resetEpoch?.get(block.id) === undefined ||
-          (!!e.payload.epoch &&
-            (options.epochs?.get(e.payload.epoch) ?? -1) >=
-              options.resetEpoch.get(block.id)!)),
+        countsAttempt(e.payload.epoch),
     ).length;
     const priorAttempts = [...(options.prunedAttempts ?? [])]
-      .filter(
-        ([key]) =>
-          key.split("#")[0] === block.id &&
-          (options.resetEpoch?.get(block.id) === undefined ||
-            (options.epochs?.get(key.split("#")[1]) ?? -1) >=
-              options.resetEpoch.get(block.id)!),
-      )
+      .filter(([key]) => {
+        const [id, epoch] = key.split("#");
+        return (
+          id === block.id &&
+          countsAttempt(epoch === "legacy" ? undefined : epoch)
+        );
+      })
       .reduce((s, [, n]) => s + n, 0);
     const exhausted =
       attempts + priorAttempts >= (block.contract?.maxAttempts ?? 100);

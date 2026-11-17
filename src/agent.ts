@@ -9,6 +9,7 @@ import {
 import { resolve } from "node:path";
 import { assert, canonical, MAX_BLOB } from "./core.ts";
 import { execute, type Isolation } from "./runtime.ts";
+import { remainingTime } from "./provider.ts";
 import { limited } from "./network.ts";
 type Message = {
   role: string;
@@ -149,9 +150,7 @@ export async function runAgent(input: any, options: AgentOptions) {
         max_tokens: Math.min(4096, options.maxTokens - tokens),
         temperature: 0,
       }),
-      signal: AbortSignal.timeout(
-        Math.max(1000, Math.min(120_000, input.deadline - Date.now())),
-      ),
+      signal: AbortSignal.timeout(remainingTime(input.deadline, 120_000)),
       redirect: "error",
     });
     assert(response.ok, `LLM endpoint returned HTTP ${response.status}`);
@@ -166,7 +165,8 @@ export async function runAgent(input: any, options: AgentOptions) {
         Number.isSafeInteger(usage.prompt_tokens) &&
         usage.prompt_tokens >= 0 &&
         Number.isSafeInteger(usage.completion_tokens) &&
-        usage.completion_tokens >= 0,
+        usage.completion_tokens >= 0 &&
+        usage.total_tokens >= usage.prompt_tokens + usage.completion_tokens,
       "Provider must report token usage",
     );
     tokens += usage.total_tokens;
@@ -213,6 +213,7 @@ export async function runAgent(input: any, options: AgentOptions) {
       };
     }
     for (const call of message.tool_calls as ToolCall[]) {
+      remainingTime(input.deadline, 30_000);
       let output: unknown;
       try {
         const args = JSON.parse(call.function.arguments);

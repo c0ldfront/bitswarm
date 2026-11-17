@@ -73,3 +73,51 @@ test("public swarm links join without shared credentials and encrypted CLI backu
     rmSync(dir, { recursive: true, force: true });
   }
 }, 15000);
+
+test("preview does not forward a saved private invitation when opening another swarm", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "bitswarm-preview-context-"));
+  const local = identity(),
+    planner = identity();
+  writeFileSync(join(dir, "identity.json"), JSON.stringify(local));
+  const wrong = { subject: local.publicKey, swarm: "0".repeat(64) };
+  const ticket = join(dir, "access.json");
+  writeFileSync(ticket, JSON.stringify(wrong));
+  const source = new Store(join(dir, "owner"), {
+    version: 4,
+    name: "Workshop",
+    description: "Private detail",
+    preview: "Published overview",
+    restricted: true,
+    validators: [planner.publicKey],
+    quorum: 1,
+    policy: { admission: "invite" },
+    blocks: [
+      {
+        id: "a",
+        title: "A",
+        instructions: "Read",
+        inputs: [],
+        requires: [],
+        capabilities: [],
+      },
+    ],
+  });
+  const server = serve(source, "", 0);
+  try {
+    const link = formatSwarmLink({
+      swarm: source.inventory().swarm,
+      peers: [server.url.origin],
+    });
+    expect(
+      JSON.parse(await cli(["preview", link, "--state", dir]))
+        .advertisedSummary,
+    ).toBe("Published overview");
+    await expect(
+      cli(["preview", link, "--state", dir, "--invite", ticket]),
+    ).rejects.toThrow("another swarm");
+  } finally {
+    server.stop(true);
+    source.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

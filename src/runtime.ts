@@ -5,12 +5,11 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
   realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { resolve, join, basename, dirname } from "node:path";
 import { restoreFile } from "./artifacts.ts";
 import { assert, hash, isHash, MAX_BLOB } from "./core.ts";
@@ -43,7 +42,11 @@ export async function execute(
   assert(o.command.length, "Missing executable");
   let command = [...o.command];
   const cwd = resolve(o.cwd || process.cwd());
-  const mode = o.isolation || "process";
+  const mode = o.isolation === undefined ? "process" : o.isolation;
+  assert(
+    ["process", "bwrap", "docker"].includes(mode),
+    "Invalid isolation mode",
+  );
   const hostExecutable = mode === "docker" ? command[0] : Bun.which(command[0]);
   assert(hostExecutable, "Executable not found");
   if (mode !== "docker") command[0] = hostExecutable;
@@ -136,6 +139,32 @@ export async function execute(
       ...command,
     ];
   }
+  let input = o.input;
+  if (
+    mode !== "process" &&
+    input &&
+    typeof input === "object" &&
+    "workspace" in input &&
+    input.workspace === cwd &&
+    "files" in input &&
+    Array.isArray(input.files) &&
+    "protocol" in input &&
+    (input.protocol === "bitswarm.adapter.v1" ||
+      input.protocol === "bitswarm.verifier.v1")
+  ) {
+    // Only the envelope's file pointers describe local paths. The remaining
+    // payload, including evidence, is content-addressed application data.
+    input = {
+      ...input,
+      workspace: "/work",
+      files: input.files.map((file) =>
+        file && typeof file.path === "string" && file.path.startsWith(cwd + "/")
+          ? { ...file, path: "/work" + file.path.slice(cwd.length) }
+          : file,
+      ),
+    };
+  }
+  const serializedInput = JSON.stringify(input);
   const started = Date.now();
   const env: NodeJS.ProcessEnv = {
     PATH: process.env.PATH,
@@ -147,7 +176,7 @@ export async function execute(
   for (const [key, value] of Object.entries(process.env))
     if (
       o.forwardProvider &&
-      /^(BITSWARM_LLM_|BITSWARM_CODEX_|OPENAI_API_KEY$|ANTHROPIC_API_KEY$)/.test(
+      /^(BITSWARM_LLM_|BITSWARM_CODEX_|BITSWARM_CLAUDE_(?:BINARY|MODEL|DEFAULT_MAX_TOKENS|DEFAULT_MAX_COST_MICROS|CONFIG_DIR)$|OPENAI_API_KEY$|ANTHROPIC_API_KEY$)/.test(
         key,
       )
     )
@@ -155,6 +184,8 @@ export async function execute(
   if (o.forwardProvider) {
     env.BITSWARM_CODEX_ACCOUNT_HOME = process.env.HOME;
     env.BITSWARM_CODEX_CONFIG_HOME = process.env.CODEX_HOME;
+    env.BITSWARM_CLAUDE_CONFIG_DIR ??=
+      process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
   }
   o.signal?.throwIfAborted();
   return new Promise((done, fail) => {
@@ -268,8 +299,8 @@ export async function execute(
       else chunks.push(chunk);
     });
     child.stderr.on("data", (chunk: Buffer) => {
+      if (stderr < 65536) diagnostic.push(chunk.subarray(0, 65536 - stderr));
       stderr += chunk.length;
-      if (stderr <= 65536) diagnostic.push(chunk);
       if (stderr > (o.maxOutput || MAX_BLOB))
         finish(new Error("Executable stderr limit exceeded"));
     });
@@ -282,19 +313,7 @@ export async function execute(
       ),
     );
     child.stdin.on("error", () => {});
-    const relocate = (v: unknown): unknown =>
-      typeof v === "string" && (v === cwd || v.startsWith(cwd + "/"))
-        ? "/work" + v.slice(cwd.length)
-        : Array.isArray(v)
-          ? v.map(relocate)
-          : v && typeof v === "object"
-            ? Object.fromEntries(
-                Object.entries(v).map(([k, x]) => [k, relocate(x)]),
-              )
-            : v;
-    child.stdin.end(
-      JSON.stringify(mode === "process" ? o.input : relocate(o.input)),
-    );
+    child.stdin.end(serializedInput);
   });
 }
 export function workspace(

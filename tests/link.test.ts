@@ -1,6 +1,12 @@
 import { test, expect } from "bun:test";
 import { digest } from "../src/core.ts";
-import { formatSwarmLink, parseSwarmLink } from "../src/link.ts";
+import { multiaddr } from "@multiformats/multiaddr";
+import {
+  discoveredPeerHints,
+  formatSwarmLink,
+  parseSwarmLink,
+  peerOrigin,
+} from "../src/link.ts";
 const swarm = digest({ project: "application" });
 test("swarm:// round trips hash, Unicode name and multiple bootstrap origins", () => {
   const link = {
@@ -54,4 +60,31 @@ test("enforce bounded URI and bootstrap counts", () => {
       peers: Array.from({ length: 17 }, (_, i) => `https://seed${i}.example`),
     }),
   ).toThrow();
+});
+
+test("relayed discovery adds the destination identity and produces a dialable swarm link", () => {
+  const relay = "12D3KooWFVELyVF3KdDrJCDAEqWYuKiSWwxTi8AmhEmHZ627Bdyp";
+  const destination = "12D3KooWMhDnBTbEt3f6ZFyeBgJ7SnuPjWqWNpnMT7pNpSL4pEFJ";
+  const base = "/ip4/127.0.0.1/tcp/4001";
+  const route = base + "/p2p/" + relay + "/p2p-circuit";
+  const complete = route + "/p2p/" + destination;
+  const hints = discoveredPeerHints(
+    [multiaddr(route), multiaddr(base)],
+    destination,
+  );
+  expect(
+    parseSwarmLink(formatSwarmLink({ swarm, peers: hints })).peers,
+  ).toEqual(["libp2p:" + complete, "libp2p:" + base + "/p2p/" + destination]);
+  expect(discoveredPeerHints([multiaddr(complete)], destination)).toEqual([
+    "libp2p:" + complete,
+  ]);
+  const cid =
+    "bafzaajaiaejcbmdxwer65jdlwoihhb7cgja6gpyvw6t7dldly4wo4yennslqpsrz";
+  const cidRoute = route + "/p2p/" + cid;
+  expect(discoveredPeerHints([multiaddr(cidRoute)], destination)).toEqual([
+    "libp2p:" + complete,
+  ]);
+  expect(peerOrigin("libp2p:" + cidRoute)).toBe("libp2p:" + complete);
+  expect(discoveredPeerHints([multiaddr(complete)], relay)).toEqual([]);
+  expect(() => peerOrigin("libp2p:" + route)).toThrow("destination peer ID");
 });

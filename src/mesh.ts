@@ -21,6 +21,7 @@ import {
   privateKeyToProtobuf,
 } from "@libp2p/crypto/keys";
 import { multiaddr } from "@multiformats/multiaddr";
+import { discoveredPeerHints } from "./link.ts";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { assert, MAX_BLOB } from "./core.ts";
@@ -49,14 +50,14 @@ async function readFrame(stream: Stream): Promise<Buffer> {
   }
   throw new Error("Incomplete mesh frame");
 }
-async function sendFrame(stream: Stream, data: Buffer) {
+async function sendFrame(stream: Stream, data: Buffer, signal?: AbortSignal) {
   assert(data.length <= maxFrame, "Mesh frame too large");
   const header = Buffer.alloc(4);
   header.writeUInt32BE(data.length);
   const frame = Buffer.concat([header, data]);
   for (let offset = 0; offset < frame.length; offset += 32 * 1024)
     if (!stream.send(frame.subarray(offset, offset + 32 * 1024)))
-      await stream.onDrain({ signal: AbortSignal.timeout(10_000) });
+      await stream.onDrain({ signal: signal ?? AbortSignal.timeout(10_000) });
 }
 export async function startMesh(
   store: Store,
@@ -168,19 +169,17 @@ export async function startMesh(
     },
   );
   const transport = rpcTransport(node);
-  setMeshTransport(transport, store.who.publicKey);
-  setMeshTransport(transport);
+  const removeOwner = setMeshTransport(transport, store.who.publicKey);
+  const removeDefault = setMeshTransport(transport);
   node.addEventListener("peer:discovery", (event) => {
-    for (const address of event.detail.multiaddrs)
+    for (const hint of discoveredPeerHints(
+      event.detail.multiaddrs,
+      event.detail.id.toString(),
+    )) {
       try {
-        store.rememberPeer(
-          "libp2p:" +
-            address.toString() +
-            (address.toString().includes("/p2p/")
-              ? ""
-              : "/p2p/" + event.detail.id.toString()),
-        );
+        store.rememberPeer(hint);
       } catch {}
+    }
   });
   for (const address of options.bootstrap || []) {
     store.rememberPeer("libp2p:" + address.replace(/^libp2p:/, ""));
@@ -209,7 +208,8 @@ export async function startMesh(
     addresses: () => node.getMultiaddrs().map((a) => "libp2p:" + a.toString()),
     stop: async () => {
       clearInterval(announcement);
-      setMeshTransport(undefined, store.who.publicKey);
+      removeOwner();
+      removeDefault();
       await node.stop();
     },
   };
@@ -217,47 +217,63 @@ export async function startMesh(
 
 function rpcTransport(node: Pick<Libp2p, "dialProtocol">) {
   return async (peer: string, path: string, init: RequestInit, max: number) => {
+    const timeout = AbortSignal.timeout(10_000);
+    const signal = init.signal
+      ? AbortSignal.any([init.signal, timeout])
+      : timeout;
+    signal.throwIfAborted();
     const stream = await node.dialProtocol(
       multiaddr(peer.slice("libp2p:".length)),
       protocol,
-      { signal: AbortSignal.timeout(10_000), runOnLimitedConnection: true },
+      { signal, runOnLimitedConnection: true },
     );
-    stream.inactivityTimeout = 10_000;
+    const abort = () =>
+      stream.abort(
+        signal.reason instanceof Error
+          ? signal.reason
+          : new Error("Mesh request aborted"),
+      );
+    signal.addEventListener("abort", abort, { once: true });
     try {
-      const response = readFrame(stream);
+      signal.throwIfAborted();
       const body =
         typeof init.body === "string"
           ? Buffer.from(init.body)
           : init.body instanceof Uint8Array
             ? Buffer.from(init.body)
             : Buffer.alloc(0);
-      await sendFrame(
-        stream,
-        Buffer.from(
-          JSON.stringify({
-            path,
-            method: init.method || "GET",
-            headers: init.headers,
-            body: body.toString("base64"),
-          }),
-        ),
+      const frame = Buffer.from(
+        JSON.stringify({
+          path,
+          method: init.method || "GET",
+          headers: init.headers,
+          body: body.toString("base64"),
+        }),
       );
-      const wire = JSON.parse((await response).toString());
+      const [response] = await Promise.all([
+        readFrame(stream),
+        sendFrame(stream, frame, signal),
+      ]);
+      const wire = JSON.parse(response.toString());
       assert(
         wire.status >= 200 && wire.status < 300,
         `Mesh peer returned ${wire.status}`,
       );
       assert(
-        typeof wire.body === "string" && wire.body.length <= max * 2,
+        typeof wire.body === "string" &&
+          wire.body.length <= Math.ceil(max / 3) * 4,
         "Mesh response too large",
       );
       const data = Buffer.from(wire.body, "base64");
       assert(data.length <= max, "Mesh response too large");
-      await stream.close();
+      await stream.close({ signal });
       return data;
     } catch (e) {
       stream.abort(e instanceof Error ? e : new Error("Mesh request failed"));
+      signal.throwIfAborted();
       throw e;
+    } finally {
+      signal.removeEventListener("abort", abort);
     }
   };
 }
@@ -304,16 +320,15 @@ export async function createDialer(
       : [],
   });
   const transport = rpcTransport(node);
-  setMeshTransport(transport, owner);
-  setMeshTransport(transport);
+  const removeOwner = setMeshTransport(transport, owner);
+  const removeDefault = setMeshTransport(transport);
   const discovered = new Set<string>();
   node.addEventListener("peer:discovery", (event) => {
-    for (const a of event.detail.multiaddrs)
-      discovered.add(
-        "libp2p:" +
-          a.toString() +
-          (a.toString().includes("/p2p/") ? "" : "/p2p/" + event.detail.id),
-      );
+    for (const hint of discoveredPeerHints(
+      event.detail.multiaddrs,
+      event.detail.id.toString(),
+    ))
+      discovered.add(hint);
   });
   for (const address of bootstrap)
     try {
@@ -330,18 +345,17 @@ export async function createDialer(
             CID.createV1(0x55, Digest.create(0x12, Buffer.from(swarm, "hex"))),
             { signal: AbortSignal.timeout(5000) },
           ))
-            for (const a of provider.multiaddrs)
-              discovered.add(
-                "libp2p:" +
-                  a.toString() +
-                  (a.toString().includes("/p2p/") ? "" : "/p2p/" + provider.id),
-              );
+            for (const hint of discoveredPeerHints(
+              provider.multiaddrs,
+              provider.id.toString(),
+            ))
+              discovered.add(hint);
         } catch {}
       return [...discovered];
     },
     stop: async () => {
-      setMeshTransport(undefined, owner);
-      setMeshTransport(undefined);
+      removeOwner();
+      removeDefault();
       await node.stop();
     },
   };

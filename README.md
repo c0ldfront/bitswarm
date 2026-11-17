@@ -36,7 +36,43 @@ bun run swarm work --state .swarm/worker --watch \
   --capability static-analysis -- bun examples/codex-adapter.ts
 ```
 
-The adapter runs `codex exec` ephemerally with a read-only tool sandbox and structured output. Authentication stays in Codex's normal local account store. User configuration/plugins are ignored for these bounded jobs; `BITSWARM_CODEX_MODEL` can select a model. The broker is an operator-trusted local program with access to the account, while generated programs are checked by an isolated verifier. Tokens are reported by Codex after execution; no dollar price or hard provider-side billing limit is inferred.
+The adapter runs `codex exec` ephemerally with a read-only tool sandbox and structured output. Authentication stays in Codex's normal local account store. User configuration/plugins are ignored for these bounded jobs; `BITSWARM_CODEX_MODEL` can select a model. For tasks without a contract, the adapter checks reported usage against `BITSWARM_CODEX_DEFAULT_MAX_TOKENS` (default 64,000, including model input). Tasks with a contract use its declared token limit. The broker is an operator-trusted local program with access to the account, while generated programs are checked by an isolated verifier. Tokens are reported by Codex after execution; no dollar price or hard provider-side billing limit is inferred.
+
+## Experimental Codex accounts
+
+On a POSIX worker, give each Codex sign-in a local label. Run this in the terminal on the machine that will do the work. Choose the intended ChatGPT account in the browser on each iteration.
+
+```sh
+for account in alpha bravo charlie; do
+  bun run codex:accounts login --experimental --account "$account" || break
+  bun run codex:accounts status --experimental --account "$account" || break
+done
+```
+
+For a headless worker, add `--device-auth` to the login command if your account permits device sign-in. Codex handles authentication and token refresh. Each label has its own owner-only directory beneath `~/.local/share/bitswarm/codex-accounts/`. Codex stores its credentials there in a **plaintext** `auth.json`. To select another private location, set `BITSWARM_CODEX_ACCOUNTS_DIR` to an absolute path outside your project. BitSwarm checks file ownership and permissions and leaves credential contents to Codex. [Codex authentication and storage](https://developers.openai.com/codex/auth#credential-storage)
+
+To put all three accounts to work, run the command below in three terminals, setting `account` to a different label in each. Point them at the same joined state directory and choose capabilities matching your blocks.
+
+```sh
+account=alpha
+bun run swarm work --state .swarm/worker --watch --capability static-analysis \
+  -- bun examples/codex-adapter.ts --experimental --account "$account"
+```
+
+Each process stays on its assigned account. All three share the node's signing identity, task queue, and project budget. Up to three eligible blocks can run concurrently if the project's concurrency limit allows it. Interrupted, rate-limited, or expired sessions follow the normal attempt-failure policy. The operator can check the affected label with `codex:accounts status` and sign in again. Profile names are local configuration and are omitted from the signed receipts. Named jobs disable shell access and receive bounded excerpts of assigned files. The original single-account command above continues to use the default Codex sign-in.
+
+## Claude Code adapter
+
+Use the installed Claude Code CLI with a locally configured Anthropic API key or a supported Claude Code sign-in. The worker's default process isolation lets the CLI contact the provider.
+
+```sh
+bun run swarm work --state .swarm/worker --watch --capability static-analysis \
+  -- bun examples/claude-adapter.ts
+```
+
+The adapter requests structured JSON in print mode with session persistence and task tools disabled. Each input excerpt contains up to 16 KiB, with a 64 KiB total for evidence. Excerpts identify their source and mark truncation. The model can request an optional input offered by the block. This mode fits tasks that can be answered from the assigned evidence.
+
+Set `BITSWARM_CLAUDE_MODEL` to choose a model and `BITSWARM_CLAUDE_CONFIG_DIR` to select the CLI configuration directory. Claude blocks with a contract need positive `maxTokens` and `maxCostMicros`. Without a contract, the defaults are 64,000 tokens and an estimated US$1 per invocation, configurable with `BITSWARM_CLAUDE_DEFAULT_MAX_TOKENS` and `BITSWARM_CLAUDE_DEFAULT_MAX_COST_MICROS`. The receipt records reported tokens, including cache usage, and Claude's estimated cost in microdollars. [Claude Code CLI reference](https://code.claude.com/docs/en/cli-reference)
 
 ## Run it
 

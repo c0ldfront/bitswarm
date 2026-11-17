@@ -18,6 +18,8 @@
     "benchmark:baseline": "BITSWARM_BASELINE=1 bun examples/live/run.ts",
     "stress": "bun examples/stress.ts",
     "agent:codex": "bun examples/codex-adapter.ts",
+    "agent:claude": "bun examples/claude-adapter.ts",
+    "codex:accounts": "bun examples/codex-accounts.ts",
     "benchmark:compatibility": "bun examples/compatibility/run.ts"
   },
   "devDependencies": {

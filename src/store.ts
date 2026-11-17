@@ -1,7 +1,15 @@
 import { expenditure } from "./budget.ts";
 import { governance } from "./control.ts";
 import { Database } from "bun:sqlite";
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
   assert,
@@ -27,9 +35,18 @@ export type Participation = {
   uploadBytes?: number;
   only?: string[];
 };
+function availablePeers(db: Database): string[] {
+  return (
+    db
+      .query(
+        "SELECT address FROM peers WHERE nextRetry <= ? ORDER BY failures,address LIMIT 32",
+      )
+      .all(Date.now()) as { address: string }[]
+  ).map((r) => r.address);
+}
 export class Store {
   db: Database;
-  manifest: Manifest;
+  manifest!: Manifest;
   who: Identity;
   private cached?: {
     stamp: string;
@@ -40,22 +57,29 @@ export class Store {
     public directory: string,
     manifest?: Manifest,
     initialParticipation?: Participation,
+    seed?: (store: Store) => void,
   ) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     const path = join(directory, "manifest.json");
     const fresh = !existsSync(path);
-    if (!fresh) {
-      this.manifest = JSON.parse(readFileSync(path, "utf8"));
+    const dbPath = join(directory, "swarm.sqlite");
+    const selectManifest = (saved?: Manifest) => {
       assert(
-        !manifest || digest(manifest) === digest(this.manifest),
+        !saved || !manifest || digest(manifest) === digest(saved),
         "State directory belongs to another swarm",
       );
-    } else {
-      assert(manifest, "Initialize or join a swarm first");
-      validateManifest(manifest);
-      this.manifest = manifest;
-    }
-    validateManifest(this.manifest);
+      const selected = saved ?? manifest;
+      assert(selected, "Initialize or join a swarm first");
+      validateManifest(selected);
+      return selected;
+    };
+    if (!fresh)
+      this.manifest = selectManifest(JSON.parse(readFileSync(path, "utf8")));
+    else
+      assert(
+        manifest || existsSync(dbPath),
+        "Initialize or join a swarm first",
+      );
     const keyPath = join(directory, "identity.json");
     if (!existsSync(keyPath))
       writeFileSync(keyPath, canonical(identity()), {
@@ -63,24 +87,72 @@ export class Store {
         flag: "wx",
       });
     this.who = JSON.parse(readFileSync(keyPath, "utf8"));
-    this.db = new Database(join(directory, "swarm.sqlite"), { create: true });
-    const schema = (
-      this.db.query("PRAGMA user_version").get() as { user_version: number }
-    ).user_version;
-    if (schema > 4) {
+    this.db = new Database(dbPath, { create: true });
+    try {
+      const schema = (
+        this.db.query("PRAGMA user_version").get() as { user_version: number }
+      ).user_version;
+      assert(schema <= 4, "Database schema is newer than this binary");
+      this.db.exec(
+        "PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL; CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS automation (key TEXT PRIMARY KEY,status TEXT,detail TEXT,time INTEGER); CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, body TEXT NOT NULL); CREATE TABLE IF NOT EXISTS blobs (id TEXT PRIMARY KEY, body BLOB NOT NULL); CREATE TABLE IF NOT EXISTS pins (id TEXT PRIMARY KEY); CREATE TABLE IF NOT EXISTS nonces (id TEXT PRIMARY KEY, expires INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS quarantine (peer TEXT, id TEXT, reason TEXT, attempts INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(peer,id)); CREATE TABLE IF NOT EXISTS peers (address TEXT PRIMARY KEY, failures INTEGER NOT NULL DEFAULT 0, nextRetry INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS transfer (key TEXT PRIMARY KEY, bytes INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS blob_owners (id TEXT PRIMARY KEY, author TEXT, bytes INTEGER);",
+      );
+      this.db.exec("PRAGMA user_version=4");
+      const genesis = this.db.query(
+        "SELECT value FROM settings WHERE key='genesis'",
+      );
+      if (!fresh) {
+        const pinned = genesis.get() as { value: string } | null;
+        assert(
+          !pinned || pinned.value === canonical(this.manifest),
+          "State directory belongs to another swarm",
+        );
+      }
+      if (fresh || seed)
+        this.db
+          .transaction(() => {
+            if (fresh) {
+              const saved = genesis.get() as { value: string } | null;
+              this.manifest = selectManifest(
+                saved ? JSON.parse(saved.value) : undefined,
+              );
+              if (!saved) {
+                if (initialParticipation) this.configure(initialParticipation);
+                this.db
+                  .query("INSERT INTO settings VALUES ('genesis',?)")
+                  .run(canonical(this.manifest));
+              }
+            }
+            seed?.(this);
+          })
+          .immediate();
+      // Publish the filesystem copy only after the seed and its genesis commit.
+      // Another opener can finish this step if the importing process stops.
+      if (fresh)
+        this.db
+          .transaction(() => {
+            if (existsSync(path)) {
+              assert(
+                digest(JSON.parse(readFileSync(path, "utf8"))) ===
+                  digest(this.manifest),
+                "State directory belongs to another swarm",
+              );
+              return;
+            }
+            const temporary = join(directory, ".manifest-" + randomUUID());
+            try {
+              writeFileSync(temporary, canonical(this.manifest), {
+                mode: 0o600,
+                flag: "wx",
+              });
+              renameSync(temporary, path);
+            } finally {
+              rmSync(temporary, { force: true });
+            }
+          })
+          .immediate();
+    } catch (error) {
       this.db.close();
-      throw new Error("Database schema is newer than this binary");
-    }
-    this.db.exec(
-      "PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS automation (key TEXT PRIMARY KEY,status TEXT,detail TEXT,time INTEGER); CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, body TEXT NOT NULL); CREATE TABLE IF NOT EXISTS blobs (id TEXT PRIMARY KEY, body BLOB NOT NULL); CREATE TABLE IF NOT EXISTS pins (id TEXT PRIMARY KEY); CREATE TABLE IF NOT EXISTS nonces (id TEXT PRIMARY KEY, expires INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS quarantine (peer TEXT, id TEXT, reason TEXT, attempts INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(peer,id)); CREATE TABLE IF NOT EXISTS peers (address TEXT PRIMARY KEY, failures INTEGER NOT NULL DEFAULT 0, nextRetry INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS transfer (key TEXT PRIMARY KEY, bytes INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS blob_owners (id TEXT PRIMARY KEY, author TEXT, bytes INTEGER);",
-    );
-    this.db.exec("PRAGMA user_version=4");
-    if (fresh) {
-      if (initialParticipation) this.configure(initialParticipation);
-      writeFileSync(path, canonical(this.manifest), {
-        mode: 0o600,
-        flag: "wx",
-      });
+      throw error;
     }
   }
   private view() {
@@ -310,10 +382,7 @@ export class Store {
     if (profile?.download === "metadata") return new Set<string>();
     const selection =
       profile?.download === "tasks"
-        ? (profile.only ?? [
-            ...this.subscriptions(),
-            ...(this.selection() ?? []),
-          ])
+        ? (profile.only ?? this.subscriptions())
         : this.selection();
     if (!selection) return undefined;
     const manifest = this.governance().manifest;
@@ -328,7 +397,7 @@ export class Store {
           }
     };
     selection.forEach(visit);
-    const ids = new Set(
+    const ids = this.expandRoots(
       manifest.blocks
         .filter((b) =>
           profile?.download === "tasks"
@@ -346,7 +415,7 @@ export class Store {
     for (const e of this.events())
       if (e.payload.kind === "verification" && resultIds.has(e.payload.result))
         ids.add(e.payload.report);
-    return this.expandRoots(ids);
+    return ids;
   }
   collect() {
     const keep = new Set([
@@ -407,13 +476,27 @@ export class Store {
       .run(address);
   }
   peers(): string[] {
-    return (
-      this.db
-        .query(
-          "SELECT address FROM peers WHERE nextRetry <= ? ORDER BY failures,address LIMIT 32",
-        )
-        .all(Date.now()) as { address: string }[]
-    ).map((r) => r.address);
+    return availablePeers(this.db);
+  }
+  static savedPeers(directory: string, swarm: string): string[] {
+    const manifest = join(directory, "manifest.json"),
+      database = join(directory, "swarm.sqlite");
+    if (!existsSync(manifest) || !existsSync(database)) return [];
+    if (digest(JSON.parse(readFileSync(manifest, "utf8"))) !== swarm) return [];
+    const db = new Database(database, { readonly: true });
+    try {
+      if (
+        !db
+          .query(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='peers'",
+          )
+          .get()
+      )
+        return [];
+      return availablePeers(db);
+    } finally {
+      db.close();
+    }
   }
   peerFailure(address: string) {
     this.rememberPeer(address);
@@ -479,9 +562,10 @@ export class Store {
     };
   }
   trimHistory() {
-    const g = this.governance();
+    const applied = new Set(this.governance().applied);
     for (const e of this.events())
       if (
+        applied.has(e.id) &&
         e.payload.kind === "control" &&
         e.payload.action.type === "accounting"
       ) {

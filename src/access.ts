@@ -216,7 +216,7 @@ export function authenticate(
         hasWork(body, g.manifest.policy.publicWorkBits ?? 12),
       "Public admission proof of work required",
     );
-    role = "worker";
+    role = member?.role ?? "worker";
   } else {
     const invitation = body.grant as Grant;
     assert(
@@ -233,6 +233,11 @@ export function authenticate(
         g.authorities.get(invitation.authority) === invitation.issuer &&
         verifies(grantBody, grantSig, invitation.issuer),
       "Invalid or expired invitation",
+    );
+    assert(
+      g.epochs!.get(invitation.authority)! >=
+        (g.lastRevocation.get(body.author) ?? 0),
+      "Invitation revoked before re-admission",
     );
     // Require the replicated admission event as well as the credential.
     assert(

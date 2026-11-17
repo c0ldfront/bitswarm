@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { Isolation } from "../src/runtime.ts";
+import { artifactWithTranscript } from "../src/provider.ts";
 import { runAgent } from "../src/agent.ts";
 const input = JSON.parse(await Bun.stdin.text());
 const endpoint = process.env.BITSWARM_LLM_ENDPOINT;
@@ -35,6 +36,10 @@ const result = await runAgent(input, {
 console.log(
   JSON.stringify({
     ...result,
-    artifact: { ...result.artifact, executionTranscript: result.transcript },
+    artifact: artifactWithTranscript(
+      result.artifact,
+      result.transcript,
+      contract.schema,
+    ),
   }),
 );

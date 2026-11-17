@@ -10,7 +10,7 @@ import {
   type Manifest,
 } from "../src/core.ts";
 import { control } from "../src/control.ts";
-import { grant, authHeaders, type Auth } from "../src/access.ts";
+import { grant, authenticate, authHeaders, type Auth } from "../src/access.ts";
 import { Store } from "../src/store.ts";
 import { serve, sync, request } from "../src/network.ts";
 test("signed invitations admit only their owner; replay, reader writes and revocation fail", async () => {
@@ -165,6 +165,121 @@ test("selective transfer fetches only selected tasks and invalid objects cannot 
     server.stop(true);
     a.close();
     b.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("re-admission with a narrower invitation does not reactivate a revoked ticket", () => {
+  const path = mkdtempSync(join(tmpdir(), "bitswarm-readmit-")),
+    owner = identity(),
+    worker = identity();
+  const manifest: Manifest = {
+    version: 4,
+    restricted: true,
+    policy: { admission: "invite" },
+    name: "Private",
+    description: "Scoped invitations",
+    validators: [owner.publicKey],
+    quorum: 1,
+    blocks: [
+      {
+        id: "a",
+        title: "A",
+        instructions: "Read A",
+        inputs: [],
+        requires: [],
+        capabilities: [],
+      },
+    ],
+  };
+  const store = new Store(path, manifest);
+  store.who = owner;
+  try {
+    const member = {
+      type: "member" as const,
+      key: worker.publicKey,
+      role: "worker" as const,
+      enabled: true,
+    };
+    control(store, member);
+    const prior = grant(store, worker.publicKey, "worker", Date.now() + 60000, {
+      blocks: ["a"],
+      roots: [],
+    });
+    control(store, { ...member, enabled: false });
+    const current = grant(
+      store,
+      worker.publicKey,
+      "worker",
+      Date.now() + 60000,
+      { blocks: [], roots: [] },
+    );
+    control(store, member);
+    const authenticateTicket = (ticket: typeof prior) =>
+      authenticate(
+        store,
+        authHeaders(
+          { identity: worker, grant: ticket },
+          "GET",
+          "/v1/manifest",
+          new Uint8Array(),
+        ).authorization,
+        "GET",
+        "/v1/manifest",
+        new Uint8Array(),
+      );
+    expect(authenticateTicket(current).role).toBe("worker");
+    expect(() => authenticateTicket(prior)).toThrow("revoked");
+  } finally {
+    store.close();
+    rmSync(path, { recursive: true, force: true });
+  }
+});
+
+test("a public participant assigned reader retains read-only permissions", () => {
+  const dir = mkdtempSync(join(tmpdir(), "bitswarm-public-reader-")),
+    owner = identity(),
+    reader = identity();
+  const manifest: Manifest = {
+    version: 4,
+    policy: { admission: "public", publicWorkBits: 8 },
+    name: "Public",
+    description: "Public workshop",
+    validators: [owner.publicKey],
+    quorum: 1,
+    blocks: [
+      {
+        id: "a",
+        title: "A",
+        instructions: "Read A",
+        inputs: [],
+        requires: [],
+        capabilities: [],
+      },
+    ],
+  };
+  const store = new Store(dir, manifest);
+  store.who = owner;
+  try {
+    control(store, {
+      type: "member",
+      key: reader.publicKey,
+      role: "reader",
+      enabled: true,
+    });
+    const bytes = new Uint8Array(),
+      path = "/v1/manifest";
+    const headers = authHeaders(
+      { identity: reader, swarm: digest(manifest), powBits: 8 },
+      "GET",
+      path,
+      bytes,
+    );
+    expect(
+      authenticate(store, headers.authorization, "GET", path, bytes).role,
+    ).toBe("reader");
+  } finally {
+    store.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });

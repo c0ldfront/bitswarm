@@ -6,6 +6,10 @@ import {
   assert,
   claimExpiration,
   makeEvent,
+  verificationMatches,
+  hash,
+  type BlockState,
+  type Event,
   type Claim,
   type Result,
 } from "./core.ts";
@@ -20,7 +24,16 @@ import {
 } from "./runtime.ts";
 import { Store } from "./store.ts";
 
-export async function prepareTask(store: Store, id: string) {
+class TaskBudgetUnavailable extends Error {}
+class TaskUnavailable extends Error {}
+
+export async function prepareTask(
+  store: Store,
+  id: string,
+  signal?: AbortSignal,
+  peers?: string[],
+) {
+  signal?.throwIfAborted();
   const profile = store.participation();
   if (!profile) return;
   assert(
@@ -33,12 +46,15 @@ export async function prepareTask(store: Store, id: string) {
   );
   const block = store.governance().manifest.blocks.find((b) => b.id === id);
   assert(block, "Unknown task");
+  checkReservation(store, block.contract);
   await hydrateTask(
     store,
     id,
     () =>
       store.state().some((s) => s.block.id === id && s.status === "ready") &&
       [...store.expandRoots(store.taskInputs(block))].every(store.hasBlob),
+    signal,
+    peers,
   );
 }
 export function requestInput(
@@ -63,77 +79,93 @@ export function requestInput(
   store.addEvent(event);
   return event;
 }
+function checkReservation(
+  store: Store,
+  budget: BlockState["block"]["contract"],
+) {
+  const g = store.governance(),
+    member = g.members!.get(store.who.publicKey);
+  const policy = { ...g.manifest.policy, ...member?.budget };
+  if (!member?.budget && policy.maxTokens !== undefined) policy.maxTokens = 0;
+  if (!member?.budget && policy.maxCostMicros !== undefined)
+    policy.maxCostMicros = 0;
+  const usage = store.usage();
+
+  if (
+    !budget &&
+    (policy.maxTokens !== undefined || policy.maxCostMicros !== undefined)
+  )
+    throw new TaskBudgetUnavailable("Budgeted projects require task contracts");
+  if (
+    usage.tokens + (budget?.maxTokens ?? 0) >
+    (policy.maxTokens ?? Number.MAX_SAFE_INTEGER)
+  )
+    throw new TaskBudgetUnavailable("Local token budget exhausted");
+  if (
+    usage.costMicros + (budget?.maxCostMicros ?? 0) >
+    (policy.maxCostMicros ?? Number.MAX_SAFE_INTEGER)
+  )
+    throw new TaskBudgetUnavailable("Local cost budget exhausted");
+  return policy;
+}
 export function claim(store: Store, blockId: string, ttl = 300_000) {
-  return store.db.transaction(() => {
-    const profile = store.participation();
-    assert(
-      profile?.download !== "metadata" &&
-        (!profile?.only || profile.only.includes(blockId)),
-      "Block outside local participation scope",
-    );
-    if (profile?.download === "tasks") store.subscribe(blockId);
-    const g = store.governance();
-    assert(!g.conflict, "Planner control fork blocks new work");
-    const states = store.state();
-    const state = states.find((s) => s.block.id === blockId);
-    assert(
-      state?.status === "ready",
-      "Block is not ready or is already claimed",
-    );
-    const member = g.members!.get(store.who.publicKey);
-    assert(
-      member?.enabled !== false && (!member || member.role === "worker"),
-      "Worker membership required",
-    );
-    assert(
-      g.manifest.policy?.admission !== "invite" ||
-        member?.enabled ||
-        store.who.publicKey === g.planner ||
-        store.manifest.validators.includes(store.who.publicKey),
-      "Worker invitation required",
-    );
-    const policy = { ...g.manifest.policy, ...member?.budget };
-    if (!member?.budget && policy.maxTokens !== undefined) policy.maxTokens = 0;
-    if (!member?.budget && policy.maxCostMicros !== undefined)
-      policy.maxCostMicros = 0;
-    const live = states
-      .flatMap((s) => s.claims)
-      .filter((e) => e.author === store.who.publicKey).length;
-    assert(
-      live < (policy.maxConcurrent ?? 4),
-      "Local concurrency budget exhausted",
-    );
-    const usage = store.usage();
-    const budget = state.block.contract;
-    assert(
-      budget ||
-        (policy.maxTokens === undefined && policy.maxCostMicros === undefined),
-      "Budgeted projects require task contracts",
-    );
-    assert(
-      usage.tokens + (budget?.maxTokens ?? 0) <=
-        (policy.maxTokens ?? Number.MAX_SAFE_INTEGER),
-      "Local token budget exhausted",
-    );
-    assert(
-      usage.costMicros + (budget?.maxCostMicros ?? 0) <=
-        (policy.maxCostMicros ?? Number.MAX_SAFE_INTEGER),
-      "Local cost budget exhausted",
-    );
-    const dependencies = state.block.requires.map(
-      (id) => states.find((s) => s.block.id === id)!.accepted!.id,
-    );
-    const event = makeEvent(store.manifest, store.who, {
-      kind: "claim",
-      epoch: g.head,
-      block: blockId,
-      expires: Date.now() + Math.min(ttl, budget?.timeoutMs ?? ttl),
-      dependencies,
-    });
-    enforceBudget(g, [...store.events(), event]);
-    store.addEvent(event);
-    return event;
-  })();
+  return store.db
+    .transaction(() => {
+      const profile = store.participation();
+      assert(
+        profile?.download !== "metadata" &&
+          (!profile?.only || profile.only.includes(blockId)),
+        "Block outside local participation scope",
+      );
+      if (profile?.download === "tasks") store.subscribe(blockId);
+      const g = store.governance();
+      assert(!g.conflict, "Planner control fork blocks new work");
+      const states = store.state();
+      const state = states.find((s) => s.block.id === blockId);
+      if (state?.status !== "ready")
+        throw new TaskUnavailable("Block is not ready or is already claimed");
+      if (
+        ![...store.expandRoots(store.taskInputs(state.block))].every(
+          store.hasBlob,
+        )
+      )
+        throw new TaskUnavailable("Task input is unavailable");
+      const member = g.members!.get(store.who.publicKey);
+      assert(
+        member?.enabled !== false && (!member || member.role === "worker"),
+        "Worker membership required",
+      );
+      assert(
+        g.manifest.policy?.admission !== "invite" ||
+          member?.enabled ||
+          store.who.publicKey === g.planner ||
+          store.manifest.validators.includes(store.who.publicKey),
+        "Worker invitation required",
+      );
+      const budget = state.block.contract;
+      const policy = checkReservation(store, budget);
+      const live = states
+        .flatMap((s) => s.claims)
+        .filter((e) => e.author === store.who.publicKey).length;
+      assert(
+        live < (policy.maxConcurrent ?? 4),
+        "Local concurrency budget exhausted",
+      );
+      const dependencies = state.block.requires.map(
+        (id) => states.find((s) => s.block.id === id)!.accepted!.id,
+      );
+      const event = makeEvent(store.manifest, store.who, {
+        kind: "claim",
+        epoch: g.head,
+        block: blockId,
+        expires: Date.now() + Math.min(ttl, budget?.timeoutMs ?? ttl),
+        dependencies,
+      });
+      enforceBudget(g, [...store.events(), event]);
+      store.addEvent(event);
+      return event;
+    })
+    .immediate();
 }
 export function submit(
   store: Store,
@@ -142,65 +174,83 @@ export function submit(
   summary: string,
   usage = { tokens: 0, costMicros: 0 },
 ) {
-  return store.db.transaction(() => {
-    const lease = store.event(claimId);
-    assert(
-      lease?.payload.kind === "claim" && lease.author === store.who.publicKey,
-      "Missing or foreign claim",
-    );
-    assert(
-      claimExpiration(
-        lease,
-        store.events(),
-        store
-          .governance()
-          .manifest.blocks.find((b) => b.id === (lease.payload as Claim).block)
-          ?.contract?.timeoutMs,
-      ) > Date.now(),
-      "Expired claim",
-    );
-    const state = store
-      .state()
-      .find((s) => s.block.id === (lease.payload as Claim).block);
-    assert(
-      state && state.status !== "cancelled" && state.status !== "blocked",
-      "Task cancelled or dependencies invalidated",
-    );
-    const member = store.governance().members!.get(store.who.publicKey);
-    assert(member?.enabled !== false, "Contributor revoked");
-    const contract = store
-      .governance()
-      .manifest.blocks.find(
-        (b) => b.id === (lease.payload as Claim).block,
-      )?.contract;
-    if (contract) {
+  return store.db
+    .transaction(() => {
+      const lease = store.event(claimId);
       assert(
-        usage.tokens <= contract.maxTokens &&
-          usage.costMicros <= contract.maxCostMicros,
-        "Result exceeds task budget",
+        lease?.payload.kind === "claim" && lease.author === store.who.publicKey,
+        "Missing or foreign claim",
       );
-      if (contract.schema)
-        assert(
-          validateSchema(
-            contract.schema,
-            JSON.parse(Buffer.from(artifact).toString()),
-          ),
-          "Result violates task output schema",
+      const events = store.events();
+      const existing = events.filter(
+        (e) =>
+          e.author === lease.author &&
+          e.payload.kind === "result" &&
+          e.payload.claim === lease.id,
+      );
+      if (existing.length) {
+        const artifactId = hash(artifact);
+        const identical = existing.find(
+          (e) =>
+            e.payload.kind === "result" &&
+            e.payload.artifact === artifactId &&
+            e.payload.summary === summary &&
+            (e.payload.usage?.tokens ?? 0) === usage.tokens &&
+            (e.payload.usage?.costMicros ?? 0) === usage.costMicros,
         );
-    }
-    const artifactId = store.addBlob(artifact);
-    const event = makeEvent(store.manifest, store.who, {
-      kind: "result",
-      block: lease.payload.block,
-      claim: lease.id,
-      artifact: artifactId,
-      summary,
-      usage,
-    });
-    enforceBudget(store.governance(), [...store.events(), event]);
-    store.addEvent(event);
-    return event;
-  })();
+        assert(identical, "Claim already has a different result");
+        return identical;
+      }
+      const g = store.governance();
+      assert(!g.conflict, "Planner control fork blocks publication");
+      const state = store
+        .state()
+        .find((s) => s.block.id === (lease.payload as Claim).block);
+      const contract = state?.block.contract;
+      assert(
+        claimExpiration(lease, events, contract?.timeoutMs) > Date.now(),
+        "Expired claim",
+      );
+      const member = g.members!.get(store.who.publicKey);
+      assert(
+        member?.enabled !== false && (!member || member.role === "worker"),
+        "Worker membership required",
+      );
+      assert(
+        state &&
+          ["claimed", "review"].includes(state.status) &&
+          state.claims.some((c) => c.id === lease.id),
+        "Claim is no longer active for this task",
+      );
+      if (contract) {
+        assert(
+          usage.tokens <= contract.maxTokens &&
+            usage.costMicros <= contract.maxCostMicros,
+          "Result exceeds task budget",
+        );
+        if (contract.schema)
+          assert(
+            validateSchema(
+              contract.schema,
+              JSON.parse(Buffer.from(artifact).toString()),
+            ),
+            "Result violates task output schema",
+          );
+      }
+      const artifactId = store.addBlob(artifact);
+      const event = makeEvent(store.manifest, store.who, {
+        kind: "result",
+        block: lease.payload.block,
+        claim: lease.id,
+        artifact: artifactId,
+        summary,
+        usage,
+      });
+      enforceBudget(store.governance(), [...store.events(), event]);
+      store.addEvent(event);
+      return event;
+    })
+    .immediate();
 }
 export function packet(store: Store, claimId: string) {
   const lease = store.event(claimId);
@@ -245,22 +295,16 @@ export function packet(store: Store, claimId: string) {
         result: c.event.id,
         summary:
           c.event.payload.kind === "result" ? c.event.payload.summary : "",
-        reports: store
-          .events()
-          .filter(
-            (e) =>
-              e.payload.kind === "verification" &&
-              e.payload.result === c.event.id,
+        reports: store.events().flatMap((e) => {
+          if (
+            e.payload.kind !== "verification" ||
+            !verificationMatches(e, block, c.event.id, (id) => store.blob(id))
           )
-          .map((e) =>
-            e.payload.kind === "verification"
-              ? JSON.parse(
-                  Buffer.from(
-                    store.blob(e.payload.report) ?? Buffer.from("{}"),
-                  ).toString(),
-                )
-              : null,
-          ),
+            return [];
+          return [
+            JSON.parse(Buffer.from(store.blob(e.payload.report)!).toString()),
+          ];
+        }),
       })),
     output: {
       summary: "Findings and limits",
@@ -275,9 +319,15 @@ export async function runWorker(
   command: string[],
   capabilities: string[] = [],
   ttl = 300_000,
-  options: { isolation?: Isolation; image?: string; signal?: AbortSignal } = {},
+  options: {
+    isolation?: Isolation;
+    image?: string;
+    signal?: AbortSignal;
+    peers?: string[];
+  } = {},
 ) {
   assert(command.length, "Provide an adapter executable after --");
+  options.signal?.throwIfAborted();
   const profile = store.participation();
   if (profile?.download === "metadata") return undefined;
   const candidates = store
@@ -298,32 +348,32 @@ export async function runWorker(
                 ),
             ))),
     );
-  let next;
-  for (const candidate of candidates) {
-    await prepareTask(store, candidate.block.id);
-    if (
-      store.state().find((s) => s.block.id === candidate.block.id)?.status ===
-        "ready" &&
-      [...store.expandRoots(store.taskInputs(candidate.block))].every(
-        store.hasBlob,
-      )
-    ) {
-      next = candidate;
+  let chosen: { state: BlockState; lease: Event } | undefined;
+  let budgetError: TaskBudgetUnavailable | undefined;
+  for (const state of candidates) {
+    try {
+      await prepareTask(store, state.block.id, options.signal, options.peers);
+      options.signal?.throwIfAborted();
+      chosen = { state, lease: claim(store, state.block.id, ttl) };
       break;
+    } catch (error) {
+      if (error instanceof TaskBudgetUnavailable) budgetError ??= error;
+      else if (!(error instanceof TaskUnavailable)) throw error;
     }
   }
-  if (!next) return undefined;
-  const lease = claim(store, next.block.id, ttl);
+  if (!chosen) {
+    if (budgetError) throw budgetError;
+    return undefined;
+  }
+  const { state: next, lease } = chosen;
   let work: ReturnType<typeof workspace> | undefined;
   const executionTimeout = next.block.contract?.timeoutMs ?? ttl;
   const cancellation = new AbortController();
+  const stop = () => cancellation.abort(options.signal?.reason);
+  options.signal?.addEventListener("abort", stop, { once: true });
   let observed = store.events().length;
   const monitor = setInterval(() => {
     try {
-      if (options.signal?.aborted) {
-        cancellation.abort();
-        return;
-      }
       const count = (
         store.db.query("SELECT COUNT(*) AS n FROM events").get() as {
           n: number;
@@ -336,8 +386,10 @@ export async function runWorker(
       if (
         g.conflict ||
         !state ||
-        ["cancelled", "blocked", "accepted"].includes(state.status) ||
-        g.members?.get(store.who.publicKey)?.enabled === false
+        !["claimed", "review"].includes(state.status) ||
+        !state.claims.some((c) => c.id === lease.id) ||
+        (g.members?.has(store.who.publicKey) &&
+          g.members.get(store.who.publicKey)?.role !== "worker")
       )
         cancellation.abort(
           new Error(
@@ -421,8 +473,12 @@ export async function runWorker(
         response.needInput.reason,
       );
       const root = response.needInput.root;
-      await hydrateTask(store, next.block.id, () =>
-        [...store.expandRoots([root])].every(store.hasBlob),
+      await hydrateTask(
+        store,
+        next.block.id,
+        () => [...store.expandRoots([root])].every(store.hasBlob),
+        cancellation.signal,
+        options.peers,
       );
       assert(
         [...store.expandRoots([root])].every(store.hasBlob),
@@ -471,6 +527,20 @@ export async function runWorker(
         response.proposals.length <= 8,
         "At most 8 follow-up proposals per task",
       );
+    if (
+      next.block.contract &&
+      (next.block.contract.maxTokens > 0 ||
+        next.block.contract.maxCostMicros > 0)
+    )
+      assert(
+        response.usage &&
+          Number.isSafeInteger(response.usage.tokens) &&
+          response.usage.tokens >= 0 &&
+          Number.isSafeInteger(response.usage.costMicros) &&
+          response.usage.costMicros >= 0,
+        "Budgeted adapter must report usage",
+      );
+    cancellation.signal.throwIfAborted();
     const submitted = submit(
       store,
       lease.id,
@@ -497,20 +567,37 @@ export async function runWorker(
           diagnostic = diagnostic.split(value).join("[REDACTED]");
       writeFileSync(join(dir, lease.id + ".log"), diagnostic, { mode: 0o600 });
     }
-    store.addEvent(
-      makeEvent(store.manifest, store.who, {
-        kind: "failure",
-        claim: lease.id,
-        reason: error instanceof Error ? error.message : "Execution failed",
-        retryable: true,
-        usage: {
-          tokens: next.block.contract?.maxTokens ?? 0,
-          costMicros: next.block.contract?.maxCostMicros ?? 0,
-        },
-      }),
-    );
+    store.db
+      .transaction(() => {
+        const closed = store
+          .events()
+          .some(
+            (e) =>
+              e.author === lease.author &&
+              (e.payload.kind === "result" || e.payload.kind === "failure") &&
+              e.payload.claim === lease.id,
+          );
+        if (closed || !store.event(lease.id)) return;
+        store.addEvent(
+          makeEvent(store.manifest, store.who, {
+            kind: "failure",
+            claim: lease.id,
+            reason: (error instanceof Error && error.message
+              ? error.message
+              : "Execution failed"
+            ).slice(0, 1024),
+            retryable: true,
+            usage: {
+              tokens: next.block.contract?.maxTokens ?? 0,
+              costMicros: next.block.contract?.maxCostMicros ?? 0,
+            },
+          }),
+        );
+      })
+      .immediate();
     throw error;
   } finally {
+    options.signal?.removeEventListener("abort", stop);
     clearInterval(heartbeat);
     clearInterval(monitor);
     work?.cleanup();

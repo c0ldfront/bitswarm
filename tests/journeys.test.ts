@@ -220,3 +220,48 @@ test("a copied libp2p swarm link joins through the real CLI without an HTTP serv
     rmSync(dir, { recursive: true, force: true });
   }
 }, 15000);
+
+test("automation dials a mesh peer listed only in its operator config", async () => {
+  const path = mkdtempSync(join(tmpdir(), "bitswarm-run-mesh-"));
+  let seed: Store | undefined,
+    mesh: Awaited<ReturnType<typeof startMesh>> | undefined;
+  const token = crypto.randomUUID();
+  try {
+    const owner = join(path, "seed"),
+      worker = join(path, "worker");
+    await cli([
+      "init",
+      "--state",
+      owner,
+      "--manifest",
+      "examples/reverse-engineering.json",
+    ]);
+    seed = new Store(owner);
+    const local = new Store(worker, seed.manifest);
+    local.close();
+    for (const block of seed.manifest.blocks)
+      await cli(["cancel", "--state", owner, "--block", block.id]);
+    mesh = await startMesh(seed, token);
+    const config = join(path, "run.json");
+    writeFileSync(
+      config,
+      JSON.stringify({
+        peers: mesh.addresses(),
+        pollMs: 100,
+        deadlineMs: 3500,
+        stopWhenComplete: true,
+      }),
+    );
+    await cli(["run", "--state", worker, "--config", config], {
+      BITSWARM_TOKEN: token,
+    });
+    const state = JSON.parse(await cli(["status", "--state", worker]));
+    expect(
+      state.blocks.every((b: { status: string }) => b.status === "cancelled"),
+    ).toBe(true);
+  } finally {
+    await mesh?.stop();
+    seed?.close();
+    rmSync(path, { recursive: true, force: true });
+  }
+}, 15000);
